@@ -1,6 +1,8 @@
 package converter
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Azure/kubelogin/pkg/token"
@@ -602,12 +604,12 @@ func TestConvert(t *testing.T) {
 				argServerID, serverID,
 				argClientID, clientID,
 				argTenantID, tenantID,
-          argTokenCacheDir, tokenCacheDir,
+				argTokenCacheDir, tokenCacheDir,
 				argEnvironment, envName,
 				argLoginMethod, token.DeviceCodeLogin,
 			},
 			overrideFlags: map[string]string{
-				flagLoginMethod:   token.AzureCLILogin,
+				flagLoginMethod: token.AzureCLILogin,
 			},
 			expectedArgs: []string{
 				getTokenCommand,
@@ -906,10 +908,16 @@ func TestConvert(t *testing.T) {
 			if data.expectedArgs != nil {
 				authProviderName = azureAuthProvider
 			}
+			tmp, err := os.MkdirTemp("", "*")
+			if err != nil {
+				t.Fatalf("unable to create tmp file: %s", err)
+			}
+			defer os.Remove(tmp)
 			config := createValidTestConfig(
 				clusterName,
 				data.command,
 				authProviderName,
+				filepath.Join(tmp, "config"),
 				data.authProviderConfig,
 				data.execArgItems,
 			)
@@ -927,7 +935,7 @@ func TestConvert(t *testing.T) {
 				}
 			}
 
-			err := Convert(o)
+			err = Convert(o)
 			if err != nil {
 				t.Fatalf("Unexpected error from Convert: %v", err)
 			}
@@ -938,7 +946,7 @@ func TestConvert(t *testing.T) {
 }
 
 func createValidTestConfig(
-	name, commandName, authProviderName string,
+	name, commandName, authProviderName, kubeconfig string,
 	authProviderConfig map[string]string,
 	execArgItems []string,
 ) *clientcmdapi.Config {
@@ -946,7 +954,8 @@ func createValidTestConfig(
 
 	config := clientcmdapi.NewConfig()
 	config.Clusters[name] = &clientcmdapi.Cluster{
-		Server: server,
+		Server:           server,
+		LocationOfOrigin: kubeconfig,
 	}
 
 	if authProviderConfig == nil && execArgItems != nil {
@@ -1032,5 +1041,6 @@ func contains(a []string, x string) bool {
 			return true
 		}
 	}
+
 	return false
 }
