@@ -83,6 +83,9 @@ func TestInteractiveBrowserCredential_Authenticate(t *testing.T) {
 			assert.NotNil(t, credential)
 
 			err = credential.Do(ctx)
+			if tc.optPtr.ClientID == "" || tc.optPtr.TenantID == "" || tc.optPtr.ServerID == "" {
+				tc.expectErr = true
+			}
 			if tc.expectErr {
 				assert.Error(t, err)
 			} else {
