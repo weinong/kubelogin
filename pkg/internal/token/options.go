@@ -31,6 +31,7 @@ type Options struct {
 	Timeout                time.Duration
 	TokenCacheDir          string
 	tokenCacheFile         string
+	writeTokenTo           string // for unit tests.
 	IdentityResourceID     string
 	FederatedTokenFile     string
 	AuthorityHost          string

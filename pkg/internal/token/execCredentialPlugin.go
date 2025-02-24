@@ -83,6 +83,14 @@ func (p *execCredentialPlugin) Do(ctx context.Context) error {
 		return fmt.Errorf("failed to get token: %s", err)
 	}
 
+	if p.o.writeTokenTo != "" { // this is only so we can test the access token easily
+		tokenString := fmt.Sprintf("%s", token.Token)
+		err := os.WriteFile(p.o.writeTokenTo, []byte(tokenString), 0644)
+		if err != nil {
+			return err
+		}
+	}
+
 	return p.execCredentialWriter.Write(token, os.Stdout)
 }
 

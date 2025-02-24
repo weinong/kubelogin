@@ -7,6 +7,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/kubelogin/pkg/internal/testutils"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -56,6 +57,7 @@ func TestInteractiveBrowserCredential_Authenticate(t *testing.T) {
 			Timeout:        70000000000,
 			TokenCacheDir:  tokenCacheDir,
 			tokenCacheFile: tokenCacheFilePath,
+			writeTokenTo:   "", // This will be set in each test case
 		}
 	}
 
@@ -63,20 +65,27 @@ func TestInteractiveBrowserCredential_Authenticate(t *testing.T) {
 	tenantID := os.Getenv(testutils.TenantID)
 
 	testCases := []struct {
-		name      string
-		optPtr    *Options
-		expectErr bool
+		name        string
+		optPtr      *Options
+		expectErr   bool
+		expectedTyp string
 	}{
-		{"valid InteractiveLogin opts", newOptions(clientID, tenantID, serverID, InteractiveLogin), false},
-		{"valid DeviceCodeLogin opts", newOptions(clientID, tenantID, serverID, DeviceCodeLogin), false},
-		{"valid AzureCLILogin opts", newOptions(clientID, tenantID, serverID, AzureCLILogin), false},
-		{"empty client id", newOptions("", tenantID, serverID, "interactive"), true},
+		{"valid InteractiveLogin opts", newOptions(clientID, tenantID, serverID, InteractiveLogin), false, "JWT"},
+		{"valid DeviceCodeLogin opts", newOptions(clientID, tenantID, serverID, DeviceCodeLogin), false, "JWT"},
+		{"valid AzureCLILogin opts", newOptions(clientID, tenantID, serverID, AzureCLILogin), false, "JWT"},
+		{"empty client id", newOptions("", tenantID, serverID, "interactive"), true, ""},
 	}
 
 	ctx := context.Background()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Logf("\nTest Case: %s\n", tc.name)
+
+			// Create a temporary file for writeTokenTo
+			writeTokenFile, err := os.CreateTemp("", "write_token_*")
+			assert.NoError(t, err)
+			tc.optPtr.writeTokenTo = writeTokenFile.Name()
+			defer os.Remove(tc.optPtr.writeTokenTo) // Ensure deletion after test case
 
 			credential, err := New(tc.optPtr)
 			assert.NoError(t, err)
@@ -90,6 +99,20 @@ func TestInteractiveBrowserCredential_Authenticate(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
+				// Read the token from the file and parse it, test it.
+				token, err := os.ReadFile(tc.optPtr.writeTokenTo)
+				tokenStr := string(token)
+				assert.NoError(t, err)
+				assert.NotEmpty(t, tokenStr)
+				claims := jwt.MapClaims{}
+				parsed, _ := jwt.ParseWithClaims(tokenStr, &claims, nil)
+				assert.NotNil(t, parsed)
+				assert.NotNil(t, claims)
+
+				// Test against parsed.Header["typ"] if expectedTyp is set
+				if tc.expectedTyp != "" {
+					assert.Equal(t, tc.expectedTyp, parsed.Header["typ"])
+				}
 			}
 			_ = os.Remove(tc.optPtr.tokenCacheFile)
 		})
