@@ -431,6 +431,9 @@ func Convert(o Options, pathOptions *clientcmd.PathOptions) error {
 			}
 		}
 
+		if exec.Env == nil {
+			exec.Env = []api.ExecEnvVar{}
+		}
 		authInfo.Exec = exec
 		authInfo.AuthProvider = nil
 	}
