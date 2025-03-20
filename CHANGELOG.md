@@ -1,5 +1,13 @@
 # Change Log
 
+## [0.2.6-1]
+
+### What's Changed
+
+* test release
+
+**Full Changelog**: https://github.com/Azure/kubelogin/compare/v0.2.5...v0.2.6
+
 ## [0.2.6]
 
 ### What's Changed

@@ -48,7 +48,7 @@ jobs:
           tag_name: "v${{ steps.changelog_reader.outputs.version }}"
           name: "v${{ steps.changelog_reader.outputs.version }} release"
           body: ${{ steps.changelog_reader.outputs.changes }}
-          draft: true
+          draft: false
 
   build-linux-and-windows:
     name: Build Linux and Windows
@@ -58,6 +58,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 0
 
       - name: Get tags
         run: git fetch --tags
@@ -67,6 +69,10 @@ jobs:
         with:
           go-version-file: "go.mod"
           cache: false
+
+      - name: Check tag
+        run: |
+          git describe --tags --exact-match --abbrev=0
 
       - name: Build Linux AMD64
         run: make
@@ -132,6 +138,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 0
 
       - name: Get tags
         run: git fetch --tags
@@ -141,6 +149,10 @@ jobs:
         with:
           go-version-file: "go.mod"
           cache: false
+
+      - name: Check tag
+        run: |
+          git describe --tags --exact-match --abbrev=0
 
       - name: Build macOS AMD64
         run: make
