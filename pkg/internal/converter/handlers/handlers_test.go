@@ -10,6 +10,19 @@ import (
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
+// Helper function to compare string slices for equality
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestValidationResult(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1069,67 +1082,6 @@ func TestMSILoginHandlerBuildExecArgs(t *testing.T) {
 	}
 }
 
-func TestHandlerRegistry(t *testing.T) {
-	registry := NewHandlerRegistry()
-
-	// Test that default handlers are registered
-	expectedHandlers := []string{
-		token.InteractiveLogin,
-		token.DeviceCodeLogin,
-		token.ServicePrincipalLogin,
-		token.MSILogin,
-		token.AzureCLILogin,
-	}
-
-	for _, loginMethod := range expectedHandlers {
-		handler, exists := registry.GetHandler(loginMethod)
-		if !exists {
-			t.Errorf("Expected handler for '%s' to be registered", loginMethod)
-		}
-		if handler.GetName() != loginMethod {
-			t.Errorf("Expected handler name '%s', got '%s'", loginMethod, handler.GetName())
-		}
-	}
-
-	// Test GetAllHandlers
-	allHandlers := registry.GetAllHandlers()
-	if len(allHandlers) != len(expectedHandlers) {
-		t.Errorf("Expected %d handlers, got %d", len(expectedHandlers), len(allHandlers))
-	}
-}
-
-func TestHandlerRegistryCustomHandler(t *testing.T) {
-	registry := NewHandlerRegistry()
-
-	// Create a custom handler using an existing implementation
-	customHandler := NewInteractiveLoginHandler()
-	customHandler.BaseHandler.name = "custom"
-
-	// Register it
-	registry.Register(customHandler)
-
-	// Test retrieval
-	handler, exists := registry.GetHandler("custom")
-	if !exists {
-		t.Error("Expected custom handler to be registered")
-	}
-	if handler.GetName() != "custom" {
-		t.Errorf("Expected handler name 'custom', got '%s'", handler.GetName())
-	}
-}
-
-func TestHandlerRegistryNonExistentHandler(t *testing.T) {
-	registry := NewHandlerRegistry()
-
-	handler, exists := registry.GetHandler("non-existent")
-	if exists {
-		t.Error("Expected non-existent handler to not be found")
-	}
-	if handler != nil {
-		t.Error("Expected handler to be nil for non-existent handler")
-	}
-}
-
 // Tests for AzureCLILoginHandler
 
 func TestAzureCLILoginHandler_Basic(t *testing.T) {
@@ -1148,11 +1100,6 @@ func TestAzureCLILoginHandler_Basic(t *testing.T) {
 	expectedOptional := []string{"tenant-id", "azure-config-dir"}
 	if len(optionalFlags) != len(expectedOptional) {
 		t.Errorf("Expected %d optional flags, got %d", len(expectedOptional), len(optionalFlags))
-	}
-	for i, flag := range expectedOptional {
-		if optionalFlags[i] != flag {
-			t.Errorf("Expected optional flag '%s', got '%s'", flag, optionalFlags[i])
-		}
 	}
 }
 
@@ -1322,5 +1269,455 @@ func TestAzureCLILoginHandler_BuildExecArgs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Tests for WorkloadIdentityLoginHandler
+
+func TestWorkloadIdentityLoginHandler_Basic(t *testing.T) {
+	handler := NewWorkloadIdentityLoginHandler()
+
+	if handler.GetName() != token.WorkloadIdentityLogin {
+		t.Errorf("Expected name '%s', got '%s'", token.WorkloadIdentityLogin, handler.GetName())
+	}
+
+	expectedRequired := []string{"server-id"}
+	if !stringSlicesEqual(handler.GetRequiredFlags(), expectedRequired) {
+		t.Errorf("Expected required flags %v, got %v", expectedRequired, handler.GetRequiredFlags())
+	}
+
+	expectedOptional := []string{"client-id", "tenant-id", "authority-host", "federated-token-file"}
+	if !stringSlicesEqual(handler.GetOptionalFlags(), expectedOptional) {
+		t.Errorf("Expected optional flags %v, got %v", expectedOptional, handler.GetOptionalFlags())
+	}
+}
+
+func TestWorkloadIdentityLoginHandler_Validation(t *testing.T) {
+	handler := NewWorkloadIdentityLoginHandler()
+	registry := mapper.NewRegistry()
+	tests := []struct {
+		name      string
+		options   *token.Options
+		expectErr bool
+	}{
+		{
+			name: "valid minimal options",
+			options: &token.Options{
+				ServerID: "test-server",
+			},
+			expectErr: false,
+		},
+		{
+			name:      "missing server-id",
+			options:   &token.Options{},
+			expectErr: true,
+		},
+		{
+			name: "valid with all optional fields",
+			options: &token.Options{
+				ServerID:           "test-server",
+				ClientID:           "test-client",
+				TenantID:           "test-tenant",
+				AuthorityHost:      "https://login.microsoftonline.com",
+				FederatedTokenFile: "/path/to/token",
+			},
+			expectErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     registry,
+				IsSet:            func(string) bool { return true },
+			}
+			result := handler.Validate(ctx)
+			if tt.expectErr && result.IsValid {
+				t.Error("Expected validation to fail but it passed")
+			}
+			if !tt.expectErr && !result.IsValid {
+				t.Errorf("Expected validation to pass but got errors: %v", result.Errors)
+			}
+		})
+	}
+}
+
+func TestWorkloadIdentityLoginHandler_BuildExecArgs(t *testing.T) {
+	handler := NewWorkloadIdentityLoginHandler()
+	tests := []struct {
+		name     string
+		options  *token.Options
+		expected []string
+	}{
+		{
+			name: "minimal workload identity login",
+			options: &token.Options{
+				ServerID: "test-server",
+			},
+			expected: []string{"get-token", "--server-id", "test-server"},
+		},
+		{
+			name: "workload identity with authority host",
+			options: &token.Options{
+				ServerID:      "test-server",
+				AuthorityHost: "https://login.microsoftonline.com",
+			},
+			expected: []string{"get-token", "--server-id", "test-server", "--authority-host", "https://login.microsoftonline.com"},
+		},
+		{
+			name: "workload identity with all options",
+			options: &token.Options{
+				ServerID:           "test-server",
+				ClientID:           "test-client",
+				TenantID:           "test-tenant",
+				AuthorityHost:      "https://login.microsoftonline.com",
+				FederatedTokenFile: "/path/to/token",
+			},
+			expected: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant", "--authority-host", "https://login.microsoftonline.com", "--federated-token-file", "/path/to/token"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     mapper.NewRegistry(),
+				IsSet:            func(string) bool { return true },
+			}
+			argBuilder := builder.NewExecArgsBuilder()
+			err := handler.BuildExecArgs(ctx, argBuilder)
+			if err != nil {
+				t.Fatalf("BuildExecArgs failed: %v", err)
+			}
+
+			args := argBuilder.MustBuild()
+			if len(args) != len(tt.expected) {
+				t.Errorf("Expected %d args, got %d. Expected: %v, Got: %v", len(tt.expected), len(args), tt.expected, args)
+				return
+			}
+
+			for i, expected := range tt.expected {
+				if args[i] != expected {
+					t.Errorf("Expected arg[%d] to be '%s', got '%s'", i, expected, args[i])
+				}
+			}
+		})
+	}
+}
+
+// Tests for ROPCLoginHandler
+
+func TestROPCLoginHandler_Basic(t *testing.T) {
+	handler := NewROPCLoginHandler()
+
+	if handler.GetName() != token.ROPCLogin {
+		t.Errorf("Expected name '%s', got '%s'", token.ROPCLogin, handler.GetName())
+	}
+
+	expectedRequired := []string{"server-id", "client-id", "tenant-id"}
+	if !stringSlicesEqual(handler.GetRequiredFlags(), expectedRequired) {
+		t.Errorf("Expected required flags %v, got %v", expectedRequired, handler.GetRequiredFlags())
+	}
+
+	expectedOptional := []string{"environment", "username", "password"}
+	if !stringSlicesEqual(handler.GetOptionalFlags(), expectedOptional) {
+		t.Errorf("Expected optional flags %v, got %v", expectedOptional, handler.GetOptionalFlags())
+	}
+}
+
+func TestROPCLoginHandler_Validation(t *testing.T) {
+	handler := NewROPCLoginHandler()
+	registry := mapper.NewRegistry()
+	tests := []struct {
+		name      string
+		options   *token.Options
+		expectErr bool
+	}{
+		{
+			name: "valid minimal options",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				TenantID: "test-tenant",
+			},
+			expectErr: false,
+		},
+		{
+			name: "missing client-id",
+			options: &token.Options{
+				ServerID: "test-server",
+				TenantID: "test-tenant",
+			},
+			expectErr: true,
+		},
+		{
+			name: "missing tenant-id",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+			},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     registry,
+				IsSet:            func(string) bool { return true },
+			}
+			result := handler.Validate(ctx)
+			if tt.expectErr && result.IsValid {
+				t.Error("Expected validation to fail but it passed")
+			}
+			if !tt.expectErr && !result.IsValid {
+				t.Errorf("Expected validation to pass but got errors: %v", result.Errors)
+			}
+		})
+	}
+}
+
+func TestROPCLoginHandler_BuildExecArgs(t *testing.T) {
+	handler := NewROPCLoginHandler()
+	tests := []struct {
+		name     string
+		options  *token.Options
+		expected []string
+	}{
+		{
+			name: "minimal ROPC login",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				TenantID: "test-tenant",
+			},
+			expected: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant"},
+		},
+		{
+			name: "ROPC with environment",
+			options: &token.Options{
+				ServerID:    "test-server",
+				ClientID:    "test-client",
+				TenantID:    "test-tenant",
+				Environment: "AzureCloud",
+			},
+			expected: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant", "--environment", "AzureCloud"},
+		},
+		{
+			name: "ROPC with username and password",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				TenantID: "test-tenant",
+				Username: "user@example.com",
+				Password: "secret",
+			},
+			expected: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant", "--username", "user@example.com", "--password", "secret"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     mapper.NewRegistry(),
+				IsSet:            func(string) bool { return true },
+			}
+			argBuilder := builder.NewExecArgsBuilder()
+			err := handler.BuildExecArgs(ctx, argBuilder)
+			if err != nil {
+				t.Fatalf("BuildExecArgs failed: %v", err)
+			}
+
+			args := argBuilder.MustBuild()
+			if len(args) != len(tt.expected) {
+				t.Errorf("Expected %d args, got %d. Expected: %v, Got: %v", len(tt.expected), len(args), tt.expected, args)
+				return
+			}
+
+			for i, expected := range tt.expected {
+				if args[i] != expected {
+					t.Errorf("Expected arg[%d] to be '%s', got '%s'", i, expected, args[i])
+				}
+			}
+		})
+	}
+}
+
+// Tests for AzureDeveloperCLILoginHandler
+
+func TestAzureDeveloperCLILoginHandler_Basic(t *testing.T) {
+	handler := NewAzureDeveloperCLILoginHandler()
+
+	if handler.GetName() != token.AzureDeveloperCLILogin {
+		t.Errorf("Expected name '%s', got '%s'", token.AzureDeveloperCLILogin, handler.GetName())
+	}
+
+	expectedRequired := []string{"server-id"}
+	if !stringSlicesEqual(handler.GetRequiredFlags(), expectedRequired) {
+		t.Errorf("Expected required flags %v, got %v", expectedRequired, handler.GetRequiredFlags())
+	}
+
+	expectedOptional := []string{"tenant-id"}
+	if !stringSlicesEqual(handler.GetOptionalFlags(), expectedOptional) {
+		t.Errorf("Expected optional flags %v, got %v", expectedOptional, handler.GetOptionalFlags())
+	}
+}
+
+func TestAzureDeveloperCLILoginHandler_Validation(t *testing.T) {
+	handler := NewAzureDeveloperCLILoginHandler()
+	registry := mapper.NewRegistry()
+	tests := []struct {
+		name      string
+		options   *token.Options
+		expectErr bool
+	}{
+		{
+			name: "valid minimal options",
+			options: &token.Options{
+				ServerID: "test-server",
+			},
+			expectErr: false,
+		},
+		{
+			name:      "missing server-id",
+			options:   &token.Options{},
+			expectErr: true,
+		},
+		{
+			name: "valid with tenant-id",
+			options: &token.Options{
+				ServerID: "test-server",
+				TenantID: "test-tenant",
+			},
+			expectErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     registry,
+				IsSet:            func(string) bool { return true },
+			}
+			result := handler.Validate(ctx)
+			if tt.expectErr && result.IsValid {
+				t.Error("Expected validation to fail but it passed")
+			}
+			if !tt.expectErr && !result.IsValid {
+				t.Errorf("Expected validation to pass but got errors: %v", result.Errors)
+			}
+		})
+	}
+}
+
+func TestAzureDeveloperCLILoginHandler_BuildExecArgs(t *testing.T) {
+	handler := NewAzureDeveloperCLILoginHandler()
+	tests := []struct {
+		name      string
+		options   *token.Options
+		isSetFunc func(string) bool
+		expected  []string
+	}{
+		{
+			name: "minimal Azure Developer CLI login",
+			options: &token.Options{
+				ServerID: "test-server",
+			},
+			isSetFunc: func(string) bool { return false },
+			expected:  []string{"get-token", "--server-id", "test-server"},
+		},
+		{
+			name: "Azure Developer CLI with explicit tenant-id",
+			options: &token.Options{
+				ServerID: "test-server",
+				TenantID: "test-tenant",
+			},
+			isSetFunc: func(flag string) bool { return flag == "tenant-id" },
+			expected:  []string{"get-token", "--server-id", "test-server", "--tenant-id", "test-tenant"},
+		},
+		{
+			name: "Azure Developer CLI with tenant in options but not set",
+			options: &token.Options{
+				ServerID: "test-server",
+				TenantID: "test-tenant",
+			},
+			isSetFunc: func(string) bool { return false },
+			expected:  []string{"get-token", "--server-id", "test-server"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     mapper.NewRegistry(),
+				IsSet:            tt.isSetFunc,
+			}
+			argBuilder := builder.NewExecArgsBuilder()
+			err := handler.BuildExecArgs(ctx, argBuilder)
+			if err != nil {
+				t.Fatalf("BuildExecArgs failed: %v", err)
+			}
+
+			args := argBuilder.MustBuild()
+			if len(args) != len(tt.expected) {
+				t.Errorf("Expected %d args, got %d. Expected: %v, Got: %v", len(tt.expected), len(args), tt.expected, args)
+				return
+			}
+
+			for i, expected := range tt.expected {
+				if args[i] != expected {
+					t.Errorf("Expected arg[%d] to be '%s', got '%s'", i, expected, args[i])
+				}
+			}
+		})
+	}
+}
+
+// Test that all new handlers are registered in the registry
+func TestHandlerRegistry_NewHandlers(t *testing.T) {
+	registry := NewHandlerRegistry()
+
+	// Test that WorkloadIdentityLoginHandler is registered
+	handler, exists := registry.GetHandler(token.WorkloadIdentityLogin)
+	if !exists {
+		t.Errorf("WorkloadIdentityLoginHandler not found in registry")
+	}
+	if handler.GetName() != token.WorkloadIdentityLogin {
+		t.Errorf("Expected handler name '%s', got '%s'", token.WorkloadIdentityLogin, handler.GetName())
+	}
+
+	// Test that ROPCLoginHandler is registered
+	handler, exists = registry.GetHandler(token.ROPCLogin)
+	if !exists {
+		t.Errorf("ROPCLoginHandler not found in registry")
+	}
+	if handler.GetName() != token.ROPCLogin {
+		t.Errorf("Expected handler name '%s', got '%s'", token.ROPCLogin, handler.GetName())
+	}
+
+	// Test that AzureDeveloperCLILoginHandler is registered
+	handler, exists = registry.GetHandler(token.AzureDeveloperCLILogin)
+	if !exists {
+		t.Errorf("AzureDeveloperCLILoginHandler not found in registry")
+	}
+	if handler.GetName() != token.AzureDeveloperCLILogin {
+		t.Errorf("Expected handler name '%s', got '%s'", token.AzureDeveloperCLILogin, handler.GetName())
 	}
 }

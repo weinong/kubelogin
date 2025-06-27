@@ -398,6 +398,107 @@ func (h *AzureCLILoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder 
 	return nil
 }
 
+// WorkloadIdentityLoginHandler handles workload identity login
+type WorkloadIdentityLoginHandler struct {
+	BaseHandler
+}
+
+// NewWorkloadIdentityLoginHandler creates a new workload identity login handler
+func NewWorkloadIdentityLoginHandler() *WorkloadIdentityLoginHandler {
+	return &WorkloadIdentityLoginHandler{
+		BaseHandler: BaseHandler{
+			name:          token.WorkloadIdentityLogin,
+			requiredFlags: []string{"server-id"},
+			optionalFlags: []string{"client-id", "tenant-id", "authority-host", "federated-token-file"},
+		},
+	}
+}
+
+// BuildExecArgs builds the exec arguments for workload identity login
+func (h *WorkloadIdentityLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+	// Add required server ID argument
+	argBuilder.AddRequiredArgument("--server-id", ctx.Options.ServerID)
+
+	// Add optional client-id and tenant-id
+	argBuilder.AddOptionalArgument("--client-id", ctx.Options.ClientID)
+	argBuilder.AddOptionalArgument("--tenant-id", ctx.Options.TenantID)
+
+	// Add workload identity specific arguments using convenience builder
+	argBuilder.AddWorkloadIdentityArgs(builder.WorkloadIdentityArgs{
+		AuthorityHost:      ctx.Options.AuthorityHost,
+		FederatedTokenFile: ctx.Options.FederatedTokenFile,
+	})
+
+	return nil
+}
+
+// ROPCLoginHandler handles Resource Owner Password Credentials (ROPC) login
+type ROPCLoginHandler struct {
+	BaseHandler
+}
+
+// NewROPCLoginHandler creates a new ROPC login handler
+func NewROPCLoginHandler() *ROPCLoginHandler {
+	return &ROPCLoginHandler{
+		BaseHandler: BaseHandler{
+			name:          token.ROPCLogin,
+			requiredFlags: []string{"server-id", "client-id", "tenant-id"},
+			optionalFlags: []string{"environment", "username", "password"},
+		},
+	}
+}
+
+// BuildExecArgs builds the exec arguments for ROPC login
+func (h *ROPCLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+	// Required authentication arguments
+	argBuilder.AddRequiredAuthArgs(builder.RequiredAuthArgs{
+		ServerID: ctx.Options.ServerID,
+		ClientID: ctx.Options.ClientID,
+		TenantID: ctx.Options.TenantID,
+	})
+
+	// Optional environment
+	argBuilder.AddOptionalArgument("--environment", ctx.Options.Environment)
+
+	// ROPC-specific arguments (username/password)
+	argBuilder.AddROPCArgs(builder.ROPCArgs{
+		Username: ctx.Options.Username,
+		Password: ctx.Options.Password,
+	})
+
+	return nil
+}
+
+// AzureDeveloperCLILoginHandler handles Azure Developer CLI login
+type AzureDeveloperCLILoginHandler struct {
+	BaseHandler
+}
+
+// NewAzureDeveloperCLILoginHandler creates a new Azure Developer CLI login handler
+func NewAzureDeveloperCLILoginHandler() *AzureDeveloperCLILoginHandler {
+	return &AzureDeveloperCLILoginHandler{
+		BaseHandler: BaseHandler{
+			name:          token.AzureDeveloperCLILogin,
+			requiredFlags: []string{"server-id"},
+			optionalFlags: []string{"tenant-id"},
+		},
+	}
+}
+
+// BuildExecArgs builds the exec arguments for Azure Developer CLI login
+func (h *AzureDeveloperCLILoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+	// Add required server ID argument
+	argBuilder.AddRequiredArgument("--server-id", ctx.Options.ServerID)
+
+	// Add optional tenant ID if explicitly set
+	// Similar to Azure CLI, tenant-id should only be used if explicitly set
+	if ctx.IsSet("tenant-id") {
+		argBuilder.AddOptionalArgument("--tenant-id", ctx.Options.TenantID)
+	}
+
+	return nil
+}
+
 // Registry for all login method handlers
 type HandlerRegistry struct {
 	handlers map[string]LoginMethodHandler
@@ -415,7 +516,9 @@ func NewHandlerRegistry() *HandlerRegistry {
 	registry.Register(NewServicePrincipalLoginHandler())
 	registry.Register(NewMSILoginHandler())
 	registry.Register(NewAzureCLILoginHandler())
-	// TODO: Add other handlers (WorkloadIdentity, ROPC, AzureDeveloperCLI)
+	registry.Register(NewWorkloadIdentityLoginHandler())
+	registry.Register(NewROPCLoginHandler())
+	registry.Register(NewAzureDeveloperCLILoginHandler())
 
 	return registry
 }

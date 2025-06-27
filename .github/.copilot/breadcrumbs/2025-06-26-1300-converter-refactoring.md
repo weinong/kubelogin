@@ -212,7 +212,7 @@ func (b *ExecArgsBuilder) MustBuild() []string
 **Convenience Builders**: Login-method-specific argument groups for common patterns:
 - `RequiredAuthArgs` - Standard authentication (server-id, client-id, tenant-id)
 - `InteractiveArgs` - Interactive login (redirect-url, login-hint)
-- `ServicePrincipalArgs` - SPN authentication (client-secret, client-certificate, etc.)
+- `ServicePrincipalArgs` - SPN authentication (client-secret, client-certificate, client-certificate-password)
 - `PoPTokenArgs` - PoP token with cross-validation (pop-enabled + pop-claims)
 - `ROPCArgs` - Username/password authentication
 - `WorkloadIdentityArgs` - Workload identity (authority-host, federated-token-file)
@@ -298,6 +298,18 @@ type BaseHandler struct {
 5. **AzureCLILoginHandler** - Azure CLI authentication
    - Required: `server-id`
    - Optional: `tenant-id`, `azure-config-dir`
+
+6. **WorkloadIdentityLoginHandler** - Workload identity authentication
+   - Required: `server-id`
+   - Optional: `client-id`, `tenant-id`, `authority-host`, `federated-token-file`
+
+7. **ROPCLoginHandler** - Resource Owner Password Credentials authentication
+   - Required: `server-id`, `client-id`, `tenant-id`
+   - Optional: `environment`, `username`, `password`
+
+8. **AzureDeveloperCLILoginHandler** - Azure Developer CLI authentication
+   - Required: `server-id`
+   - Optional: `tenant-id`
 
 **Handler Registry System**:
 - **Centralized Registration**: All handlers registered in `NewHandlerRegistry()`
@@ -612,6 +624,226 @@ get-token --server-id test-server
 - Implements Azure CLI domain-specific logic while maintaining interface compliance
 - Maintains backward compatibility with existing exec argument format
 
+### Task 4.6: Implement WorkloadIdentityLoginHandler ✅
+
+**Implementation**: Enhanced the WorkloadIdentityLoginHandler with sophisticated argument building using the convenience builders from Task 3.3, targeting the workload identity authentication scenario.
+
+**Key Enhancements**:
+
+1. **Minimal Required Flags**:
+   - **Required Flags**: Only `server-id` is required for workload identity login
+   - **Optional Flags**: `client-id`, `tenant-id`, `authority-host`, `federated-token-file`
+   - **Flexibility**: Workload identity can work with minimal configuration
+
+2. **Specialized Argument Building**:
+   - **WorkloadIdentityArgs**: Uses convenience builder for authority-host and federated-token-file
+   - **Individual Arguments**: Handles client-id and tenant-id separately as optional arguments
+   - **Type Safety**: Leverages type-safe builders instead of manual string manipulation
+
+3. **Clean Implementation**:
+   - **No Special Validation**: Workload identity doesn't require cross-field validation
+   - **Minimal Surface**: Only includes what's necessary for workload identity scenarios
+
+**Enhanced Argument Building**:
+```go
+func (h *WorkloadIdentityLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+    // Add required server ID argument
+    argBuilder.AddRequiredArgument("--server-id", ctx.Options.ServerID)
+
+    // Add optional client-id and tenant-id
+    argBuilder.AddOptionalArgument("--client-id", ctx.Options.ClientID)
+    argBuilder.AddOptionalArgument("--tenant-id", ctx.Options.TenantID)
+
+    // Add workload identity specific arguments using convenience builder
+    argBuilder.AddWorkloadIdentityArgs(builder.WorkloadIdentityArgs{
+        AuthorityHost:      ctx.Options.AuthorityHost,
+        FederatedTokenFile: ctx.Options.FederatedTokenFile,
+    })
+
+    return nil
+}
+```
+
+**Key Improvements Over Generic Implementation**:
+- **Workload Identity Specific**: Uses WorkloadIdentityArgs convenience builder for specialized arguments
+- **Minimal Requirements**: Only requires server-id, making it easy to use
+- **Clean Code**: More readable and maintainable than the original switch statement approach
+- **Type Safety**: Impossible to create malformed argument combinations
+
+**Argument Generation Examples**:
+
+*Minimal Workload Identity Login*:
+```bash
+get-token --server-id test-server
+```
+
+*Workload Identity with Authority Host*:
+```bash
+get-token --server-id test-server --authority-host https://login.microsoftonline.com
+```
+
+*Workload Identity with All Options*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant \
+  --authority-host https://login.microsoftonline.com --federated-token-file /path/to/token
+```
+
+**Testing Coverage**:
+- **Basic Functionality**: Handler creation, name, required/optional flags
+- **Validation Scenarios**: Valid options, missing server-id, all optional fields
+- **Argument Building**: Minimal, with authority host, and with all options scenarios
+- **Registry Integration**: Handler properly registered and retrievable
+
+### Task 4.7: Implement ROPCLoginHandler ✅
+
+**Implementation**: Enhanced the ROPCLoginHandler (Resource Owner Password Credentials) with sophisticated argument building using the convenience builders from Task 3.3, targeting the username/password authentication scenario.
+
+**Key Enhancements**:
+
+1. **Standard Authentication Requirements**:
+   - **Required Flags**: `server-id`, `client-id`, `tenant-id` (standard auth requirements)
+   - **Optional Flags**: `environment`, `username`, `password`
+   - **ROPC Specific**: Username and password are optional but typically used together
+
+2. **Sophisticated Argument Building**:
+   - **RequiredAuthArgs**: Uses convenience builder for standard authentication trio
+   - **ROPCArgs**: Uses convenience builder for username/password arguments
+   - **Type Safety**: Leverages type-safe builders instead of manual string manipulation
+
+3. **Clean Implementation**:
+   - **No Special Validation**: ROPC doesn't require cross-field validation (username/password are both optional)
+   - **Standard Pattern**: Follows the same enhancement pattern as other handlers
+
+**Enhanced Argument Building**:
+```go
+func (h *ROPCLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+    // Required authentication arguments
+    argBuilder.AddRequiredAuthArgs(builder.RequiredAuthArgs{
+        ServerID: ctx.Options.ServerID,
+        ClientID: ctx.Options.ClientID,
+        TenantID: ctx.Options.TenantID,
+    })
+
+    // Optional environment
+    argBuilder.AddOptionalArgument("--environment", ctx.Options.Environment)
+
+    // ROPC-specific arguments (username/password)
+    argBuilder.AddROPCArgs(builder.ROPCArgs{
+        Username: ctx.Options.Username,
+        Password: ctx.Options.Password,
+    })
+
+    return nil
+}
+```
+
+**Key Improvements Over Generic Implementation**:
+- **ROPC Specific**: Uses ROPCArgs convenience builder for username/password arguments
+- **Standard Auth**: Uses RequiredAuthArgs for the standard authentication trio
+- **Clean Code**: More readable and maintainable than the original switch statement approach
+- **Type Safety**: Impossible to create malformed argument combinations
+
+**Argument Generation Examples**:
+
+*Minimal ROPC Login*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant
+```
+
+*ROPC with Environment*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant \
+  --environment AzureCloud
+```
+
+*ROPC with Username and Password*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant \
+  --username user@example.com --password secret
+```
+
+**Testing Coverage**:
+- **Basic Functionality**: Handler creation, name, required/optional flags
+- **Validation Scenarios**: Valid options, missing client-id, missing tenant-id
+- **Argument Building**: Minimal, with environment, with username/password scenarios
+- **Registry Integration**: Handler properly registered and retrievable
+
+### Task 4.8: Implement AzureDeveloperCLILoginHandler ✅
+
+**Implementation**: Enhanced the AzureDeveloperCLILoginHandler with sophisticated argument building and special tenant-id handling similar to Azure CLI scenarios.
+
+**Key Enhancements**:
+
+1. **Minimal Requirements Like Azure CLI**:
+   - **Required Flags**: Only `server-id` is required for Azure Developer CLI login
+   - **Optional Flags**: `tenant-id` (only used if explicitly set)
+   - **Simplified**: Even simpler than Azure CLI (no azure-config-dir support)
+
+2. **Special Tenant-ID Logic**:
+   - **Explicit Flag Requirement**: Tenant-ID must be explicitly set via flag, not inherited from kubeconfig
+   - **Similar to Azure CLI**: Follows the same pattern as AzureCLILoginHandler for consistency
+   - **Clean Documentation**: Inherits the same rationale as Azure CLI for tenant-id handling
+
+3. **Clean Implementation**:
+   - **No Special Validation**: Azure Developer CLI doesn't require cross-field validation
+   - **Minimal Surface**: Only requires what's absolutely necessary
+
+**Enhanced Argument Building**:
+```go
+func (h *AzureDeveloperCLILoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+    // Add required server ID argument
+    argBuilder.AddRequiredArgument("--server-id", ctx.Options.ServerID)
+
+    // Add optional tenant ID if explicitly set
+    // Similar to Azure CLI, tenant-id should only be used if explicitly set
+    if ctx.IsSet("tenant-id") {
+        argBuilder.AddOptionalArgument("--tenant-id", ctx.Options.TenantID)
+    }
+
+    return nil
+}
+```
+
+**Key Improvements Over Generic Implementation**:
+- **Domain-specific Logic**: Implements explicit tenant-ID handling like Azure CLI
+- **Consistent Pattern**: Follows the same enhancement pattern as AzureCLILoginHandler
+- **Minimal Surface**: Only requires what's absolutely necessary for Azure Developer CLI
+- **Clear Logic**: Simple and focused implementation
+
+**Argument Generation Examples**:
+
+*Minimal Azure Developer CLI Login*:
+```bash
+get-token --server-id test-server
+```
+
+*Azure Developer CLI with Explicit Tenant*:
+```bash
+get-token --server-id test-server --tenant-id test-tenant
+```
+
+*Azure Developer CLI with Tenant in Options but Not Set* (tenant ignored):
+```bash
+get-token --server-id test-server
+```
+
+**Testing Coverage**:
+- **Basic Functionality**: Handler creation, name, required/optional flags
+- **Validation Scenarios**: Valid options, missing server-id, valid with tenant-id
+- **Argument Building**: Minimal login, explicit tenant-id, tenant in options but not set
+- **Special Logic**: Explicit vs implicit tenant-id flag handling like Azure CLI
+- **Registry Integration**: Handler properly registered and retrievable
+
+**All New Handlers Registration**:
+All three new handlers are properly registered in the `NewHandlerRegistry()` function:
+```go
+registry.Register(NewWorkloadIdentityLoginHandler())
+registry.Register(NewROPCLoginHandler())  
+registry.Register(NewAzureDeveloperCLILoginHandler())
+```
+
+**Phase 4 Completion**: All login method handlers have been successfully implemented with comprehensive test coverage, sophisticated argument building, and proper integration into the handler registry system. The handlers follow consistent patterns and maintain backward compatibility with the existing exec argument format.
+
 ## Changes Made
 
 *To be filled during implementation*
@@ -657,9 +889,9 @@ get-token --server-id test-server
 - [x] Task 4.3: Implement ServicePrincipalLoginHandler  
 - [x] Task 4.4: Implement MSILoginHandler
 - [x] Task 4.5: Implement AzureCLILoginHandler
-- [ ] Task 4.6: Implement WorkloadIdentityLoginHandler
-- [ ] Task 4.7: Implement ROPCLoginHandler
-- [ ] Task 4.8: Implement AzureDeveloperCLILoginHandler
+- [x] Task 4.6: Implement WorkloadIdentityLoginHandler
+- [x] Task 4.7: Implement ROPCLoginHandler
+- [x] Task 4.8: Implement AzureDeveloperCLILoginHandler
 
 ### Phase 5: Integration and Migration
 - [ ] Task 5.1: Replace getArgValues() function with new mapping system
