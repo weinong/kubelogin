@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"fmt"
+
 	"github.com/Azure/kubelogin/pkg/internal/converter/builder"
 	"github.com/Azure/kubelogin/pkg/internal/converter/mapper"
 	"github.com/Azure/kubelogin/pkg/internal/token"
@@ -13,11 +14,11 @@ import (
 
 // ConversionContext contains all the context needed for conversion
 type ConversionContext struct {
-	Options           *token.Options
-	AuthInfo          *api.AuthInfo
-	IsLegacyProvider  bool
-	FlagRegistry      *mapper.Registry
-	IsSet             func(string) bool // Function to check if flag was explicitly set
+	Options          *token.Options
+	AuthInfo         *api.AuthInfo
+	IsLegacyProvider bool
+	FlagRegistry     *mapper.Registry
+	IsSet            func(string) bool // Function to check if flag was explicitly set
 }
 
 // ValidationResult contains the result of validating conversion arguments
@@ -30,23 +31,23 @@ type ValidationResult struct {
 type LoginMethodHandler interface {
 	// GetName returns the login method name this handler supports
 	GetName() string
-	
+
 	// Validate checks if the conversion context is valid for this login method
 	Validate(ctx *ConversionContext) ValidationResult
-	
+
 	// BuildExecArgs builds the exec arguments for this login method
 	BuildExecArgs(ctx *ConversionContext, builder *builder.ExecArgsBuilder) error
-	
+
 	// GetRequiredFlags returns the flags that are required for this login method
 	GetRequiredFlags() []string
-	
+
 	// GetOptionalFlags returns the flags that are optional for this login method
 	GetOptionalFlags() []string
 }
 
 // BaseHandler provides common functionality for all login method handlers
 type BaseHandler struct {
-	name         string
+	name          string
 	requiredFlags []string
 	optionalFlags []string
 }
@@ -69,14 +70,14 @@ func (h *BaseHandler) GetOptionalFlags() []string {
 // Validate performs basic validation common to all handlers
 func (h *BaseHandler) Validate(ctx *ConversionContext) ValidationResult {
 	var errors []string
-	
+
 	// Check required flags have values
 	for _, flagName := range h.requiredFlags {
 		mapping, exists := ctx.FlagRegistry.GetMapping(flagName)
 		if !exists {
 			continue
 		}
-		
+
 		var value string
 		if mapping.IsBoolean {
 			// Boolean flags don't need values, just check if they should be set
@@ -84,12 +85,12 @@ func (h *BaseHandler) Validate(ctx *ConversionContext) ValidationResult {
 		} else {
 			value = mapping.GetValue(ctx.Options)
 		}
-		
+
 		if value == "" {
 			errors = append(errors, fmt.Sprintf("--%s is required for %s login", flagName, h.name))
 		}
 	}
-	
+
 	return ValidationResult{
 		IsValid: len(errors) == 0,
 		Errors:  errors,
@@ -105,7 +106,7 @@ type InteractiveLoginHandler struct {
 func NewInteractiveLoginHandler() *InteractiveLoginHandler {
 	return &InteractiveLoginHandler{
 		BaseHandler: BaseHandler{
-			name:         token.InteractiveLogin,
+			name:          token.InteractiveLogin,
 			requiredFlags: []string{"server-id", "client-id", "tenant-id"},
 			optionalFlags: []string{"environment", "login-hint", "redirect-url", "pop-enabled", "pop-claims"},
 		},
@@ -116,7 +117,7 @@ func NewInteractiveLoginHandler() *InteractiveLoginHandler {
 func (h *InteractiveLoginHandler) BuildExecArgs(ctx *ConversionContext, builder *builder.ExecArgsBuilder) error {
 	// Add required arguments
 	mappings := ctx.FlagRegistry.GetMappingsForLogin(token.InteractiveLogin)
-	
+
 	for _, mapping := range mappings {
 		if mapping.IsBoolean {
 			value := mapping.GetBoolValue(ctx.Options)
@@ -124,11 +125,11 @@ func (h *InteractiveLoginHandler) BuildExecArgs(ctx *ConversionContext, builder 
 		} else {
 			value := mapping.GetValue(ctx.Options)
 			if mapping.IsRequired || value != "" {
-				builder.AddArgument(mapping.ArgumentName, value)
+				builder.AddOptionalArgument(mapping.ArgumentName, value)
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -141,7 +142,7 @@ type DeviceCodeLoginHandler struct {
 func NewDeviceCodeLoginHandler() *DeviceCodeLoginHandler {
 	return &DeviceCodeLoginHandler{
 		BaseHandler: BaseHandler{
-			name:         token.DeviceCodeLogin,
+			name:          token.DeviceCodeLogin,
 			requiredFlags: []string{"server-id", "client-id", "tenant-id"},
 			optionalFlags: []string{"environment", "legacy"},
 		},
@@ -151,7 +152,7 @@ func NewDeviceCodeLoginHandler() *DeviceCodeLoginHandler {
 // BuildExecArgs builds exec arguments for device code login
 func (h *DeviceCodeLoginHandler) BuildExecArgs(ctx *ConversionContext, builder *builder.ExecArgsBuilder) error {
 	mappings := ctx.FlagRegistry.GetMappingsForLogin(token.DeviceCodeLogin)
-	
+
 	for _, mapping := range mappings {
 		if mapping.IsBoolean {
 			value := mapping.GetBoolValue(ctx.Options)
@@ -159,11 +160,11 @@ func (h *DeviceCodeLoginHandler) BuildExecArgs(ctx *ConversionContext, builder *
 		} else {
 			value := mapping.GetValue(ctx.Options)
 			if mapping.IsRequired || value != "" {
-				builder.AddArgument(mapping.ArgumentName, value)
+				builder.AddOptionalArgument(mapping.ArgumentName, value)
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -176,7 +177,7 @@ type ServicePrincipalLoginHandler struct {
 func NewServicePrincipalLoginHandler() *ServicePrincipalLoginHandler {
 	return &ServicePrincipalLoginHandler{
 		BaseHandler: BaseHandler{
-			name:         token.ServicePrincipalLogin,
+			name:          token.ServicePrincipalLogin,
 			requiredFlags: []string{"server-id", "client-id", "tenant-id"},
 			optionalFlags: []string{"environment", "client-secret", "client-certificate", "client-certificate-password", "legacy", "pop-enabled", "pop-claims", "disable-environment-override"},
 		},
@@ -186,7 +187,7 @@ func NewServicePrincipalLoginHandler() *ServicePrincipalLoginHandler {
 // BuildExecArgs builds exec arguments for service principal login
 func (h *ServicePrincipalLoginHandler) BuildExecArgs(ctx *ConversionContext, builder *builder.ExecArgsBuilder) error {
 	mappings := ctx.FlagRegistry.GetMappingsForLogin(token.ServicePrincipalLogin)
-	
+
 	for _, mapping := range mappings {
 		if mapping.IsBoolean {
 			value := mapping.GetBoolValue(ctx.Options)
@@ -194,11 +195,11 @@ func (h *ServicePrincipalLoginHandler) BuildExecArgs(ctx *ConversionContext, bui
 		} else {
 			value := mapping.GetValue(ctx.Options)
 			if mapping.IsRequired || value != "" {
-				builder.AddArgument(mapping.ArgumentName, value)
+				builder.AddOptionalArgument(mapping.ArgumentName, value)
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -211,7 +212,7 @@ type MSILoginHandler struct {
 func NewMSILoginHandler() *MSILoginHandler {
 	return &MSILoginHandler{
 		BaseHandler: BaseHandler{
-			name:         token.MSILogin,
+			name:          token.MSILogin,
 			requiredFlags: []string{"server-id"},
 			optionalFlags: []string{"client-id", "identity-resource-id"},
 		},
@@ -221,14 +222,14 @@ func NewMSILoginHandler() *MSILoginHandler {
 // BuildExecArgs builds exec arguments for MSI login
 func (h *MSILoginHandler) BuildExecArgs(ctx *ConversionContext, builder *builder.ExecArgsBuilder) error {
 	mappings := ctx.FlagRegistry.GetMappingsForLogin(token.MSILogin)
-	
+
 	for _, mapping := range mappings {
 		value := mapping.GetValue(ctx.Options)
 		if mapping.IsRequired || value != "" {
-			builder.AddArgument(mapping.ArgumentName, value)
+			builder.AddOptionalArgument(mapping.ArgumentName, value)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -242,14 +243,14 @@ func NewHandlerRegistry() *HandlerRegistry {
 	registry := &HandlerRegistry{
 		handlers: make(map[string]LoginMethodHandler),
 	}
-	
+
 	// Register all handlers
 	registry.Register(NewInteractiveLoginHandler())
 	registry.Register(NewDeviceCodeLoginHandler())
 	registry.Register(NewServicePrincipalLoginHandler())
 	registry.Register(NewMSILoginHandler())
 	// TODO: Add other handlers (AzureCLI, WorkloadIdentity, ROPC, AzureDeveloperCLI)
-	
+
 	return registry
 }
 

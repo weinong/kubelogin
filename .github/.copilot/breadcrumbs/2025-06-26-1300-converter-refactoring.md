@@ -245,6 +245,92 @@ args, err := NewExecArgsBuilder().
 - `pkg/internal/converter/builder/builder.go` - Enhanced with error handling and convenience methods
 - `pkg/internal/converter/builder/builder_test.go` - Comprehensive test suite (10 test functions)
 
+### Task 3.4: Login Method Handler Interface and Base Functionality ✅
+
+**Implementation**: Completed the strategy pattern for login method handlers, providing a clean interface to replace the massive switch statement in `Convert()`.
+
+**Key Components**:
+
+```go
+// Core interface for all login method handlers
+type LoginMethodHandler interface {
+    GetName() string
+    Validate(*ConversionContext) ValidationResult
+    BuildExecArgs(*ConversionContext, *builder.ExecArgsBuilder) error
+    GetRequiredFlags() []string
+    GetOptionalFlags() []string
+}
+
+// Context object containing all conversion data
+type ConversionContext struct {
+    Options          *token.Options
+    AuthInfo         *api.AuthInfo
+    IsLegacyProvider bool
+    FlagRegistry     *mapper.Registry
+    IsSet            func(string) bool
+}
+
+// Base handler with common functionality
+type BaseHandler struct {
+    name          string
+    requiredFlags []string
+    optionalFlags []string
+}
+```
+
+**Login Method Handlers Implemented**:
+1. **InteractiveLoginHandler** - Browser-based authentication
+   - Required: `server-id`, `client-id`, `tenant-id`
+   - Optional: `environment`, `login-hint`, `redirect-url`, `pop-enabled`, `pop-claims`
+
+2. **DeviceCodeLoginHandler** - Device code flow authentication
+   - Required: `server-id`, `client-id`, `tenant-id`
+   - Optional: `environment`, `legacy`
+
+3. **ServicePrincipalLoginHandler** - Service principal authentication
+   - Required: `server-id`, `client-id`, `tenant-id`
+   - Optional: `environment`, `client-secret`, `client-certificate`, `client-certificate-password`, `legacy`, `pop-enabled`, `pop-claims`, `disable-environment-override`
+
+4. **MSILoginHandler** - Managed Service Identity authentication
+   - Required: `server-id`
+   - Optional: `client-id`, `identity-resource-id`
+
+**Handler Registry System**:
+- **Centralized Registration**: All handlers registered in `NewHandlerRegistry()`
+- **Runtime Lookup**: Handlers retrieved by login method name
+- **Extensible**: New handlers can be registered easily
+- **Type Safe**: Interface enforcement ensures consistent behavior
+
+**Key Improvements Over Switch Statement**:
+- **Separation of Concerns**: Each login method is self-contained
+- **Testability**: Each handler can be tested independently
+- **Extensibility**: Adding new login methods requires only implementing the interface
+- **Maintainability**: Login method logic is no longer scattered across a massive function
+- **Validation**: Each handler declares its own requirements and validates them consistently
+
+**Usage Pattern**:
+```go
+registry := NewHandlerRegistry()
+handler, exists := registry.GetHandler(loginMethod)
+if exists {
+    result := handler.Validate(ctx)
+    if result.IsValid {
+        err := handler.BuildExecArgs(ctx, builder)
+    }
+}
+```
+
+**Files Created**:
+- `pkg/internal/converter/handlers/handlers.go` - Complete handler implementation
+- `pkg/internal/converter/handlers/handlers_test.go` - Comprehensive test suite (12 test functions)
+
+**Testing Coverage**:
+- **Interface Compliance**: All handlers implement the required interface
+- **Validation Logic**: Required and optional flags are properly validated
+- **Exec Argument Building**: Arguments are correctly constructed for each login method
+- **Registry Operations**: Handler registration and lookup work correctly
+- **Error Handling**: Edge cases and missing handlers are properly handled
+
 ## Changes Made
 
 *To be filled during implementation*
@@ -282,7 +368,7 @@ args, err := NewExecArgsBuilder().
 - [x] Task 3.1: Implement RawOptions → Validate() → Complete() pattern for converter options
 - [x] Task 3.2: Implement flag registry and mapping system
 - [x] Task 3.3: Implement argument builder with fluent interface
-- [ ] Task 3.4: Implement login method handler interface and base functionality
+- [x] Task 3.4: Implement login method handler interface and base functionality
 
 ### Phase 4: Implement Login Method Handlers
 - [ ] Task 4.1: Implement InteractiveLoginHandler with proper flag handling

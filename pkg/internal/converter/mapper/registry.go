@@ -11,26 +11,26 @@ import (
 type FlagMapping struct {
 	// FlagName is the CLI flag name (without dashes, e.g., "client-id")
 	FlagName string
-	
+
 	// ArgumentName is the exec argument name (with dashes, e.g., "--client-id")
 	ArgumentName string
-	
+
 	// GetValue extracts the value from TokenOptions
 	GetValue func(*token.Options) string
-	
+
 	// LegacyConfigKey is the key in legacy authProvider config (optional)
 	LegacyConfigKey string
-	
+
 	// IsRequired indicates if this flag is required for validation
 	IsRequired bool
-	
+
 	// ApplicableLogins lists which login methods this flag applies to
 	// Empty slice means applies to all login methods
 	ApplicableLogins []string
-	
+
 	// IsBoolean indicates this is a boolean flag (no value, just presence)
 	IsBoolean bool
-	
+
 	// GetBoolValue extracts boolean value from TokenOptions (for boolean flags)
 	GetBoolValue func(*token.Options) bool
 }
@@ -51,11 +51,11 @@ func NewRegistry() *Registry {
 func defaultMappings() []FlagMapping {
 	return []FlagMapping{
 		{
-			FlagName:     "client-id",
-			ArgumentName: "--client-id",
-			GetValue:     func(opts *token.Options) string { return opts.ClientID },
+			FlagName:        "client-id",
+			ArgumentName:    "--client-id",
+			GetValue:        func(opts *token.Options) string { return opts.ClientID },
 			LegacyConfigKey: "client-id",
-			IsRequired:   true,
+			IsRequired:      true,
 			ApplicableLogins: []string{
 				token.DeviceCodeLogin,
 				token.InteractiveLogin,
@@ -64,19 +64,19 @@ func defaultMappings() []FlagMapping {
 			},
 		},
 		{
-			FlagName:     "server-id",
-			ArgumentName: "--server-id",
-			GetValue:     func(opts *token.Options) string { return opts.ServerID },
-			LegacyConfigKey: "apiserver-id",
-			IsRequired:   true,
+			FlagName:         "server-id",
+			ArgumentName:     "--server-id",
+			GetValue:         func(opts *token.Options) string { return opts.ServerID },
+			LegacyConfigKey:  "apiserver-id",
+			IsRequired:       true,
 			ApplicableLogins: []string{}, // Required for all login methods
 		},
 		{
-			FlagName:     "tenant-id",
-			ArgumentName: "--tenant-id",
-			GetValue:     func(opts *token.Options) string { return opts.TenantID },
+			FlagName:        "tenant-id",
+			ArgumentName:    "--tenant-id",
+			GetValue:        func(opts *token.Options) string { return opts.TenantID },
 			LegacyConfigKey: "tenant-id",
-			IsRequired:   true,
+			IsRequired:      true,
 			ApplicableLogins: []string{
 				token.DeviceCodeLogin,
 				token.InteractiveLogin,
@@ -85,11 +85,11 @@ func defaultMappings() []FlagMapping {
 			},
 		},
 		{
-			FlagName:     "environment",
-			ArgumentName: "--environment",
-			GetValue:     func(opts *token.Options) string { return opts.Environment },
+			FlagName:        "environment",
+			ArgumentName:    "--environment",
+			GetValue:        func(opts *token.Options) string { return opts.Environment },
 			LegacyConfigKey: "environment",
-			IsRequired:   false,
+			IsRequired:      false,
 			ApplicableLogins: []string{
 				token.DeviceCodeLogin,
 				token.InteractiveLogin,
@@ -98,99 +98,99 @@ func defaultMappings() []FlagMapping {
 			},
 		},
 		{
-			FlagName:     "login-hint",
-			ArgumentName: "--login-hint",
-			GetValue:     func(opts *token.Options) string { return opts.LoginHint },
-			LegacyConfigKey: "", // No legacy equivalent
-			IsRequired:   false,
+			FlagName:         "login-hint",
+			ArgumentName:     "--login-hint",
+			GetValue:         func(opts *token.Options) string { return opts.LoginHint },
+			LegacyConfigKey:  "", // No legacy equivalent
+			IsRequired:       false,
 			ApplicableLogins: []string{token.InteractiveLogin},
 		},
 		{
-			FlagName:     "redirect-url",
-			ArgumentName: "--redirect-url",
-			GetValue:     func(opts *token.Options) string { return opts.RedirectURL },
-			LegacyConfigKey: "", // No legacy equivalent
-			IsRequired:   false,
+			FlagName:         "redirect-url",
+			ArgumentName:     "--redirect-url",
+			GetValue:         func(opts *token.Options) string { return opts.RedirectURL },
+			LegacyConfigKey:  "", // No legacy equivalent
+			IsRequired:       false,
 			ApplicableLogins: []string{token.InteractiveLogin},
 		},
 		{
-			FlagName:     "client-secret",
-			ArgumentName: "--client-secret",
-			GetValue:     func(opts *token.Options) string { return opts.ClientSecret },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "client-secret",
+			ArgumentName:     "--client-secret",
+			GetValue:         func(opts *token.Options) string { return opts.ClientSecret },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{token.ServicePrincipalLogin},
 		},
 		{
-			FlagName:     "client-certificate",
-			ArgumentName: "--client-certificate",
-			GetValue:     func(opts *token.Options) string { return opts.ClientCert },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "client-certificate",
+			ArgumentName:     "--client-certificate",
+			GetValue:         func(opts *token.Options) string { return opts.ClientCert },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{token.ServicePrincipalLogin},
 		},
 		{
-			FlagName:     "client-certificate-password",
-			ArgumentName: "--client-certificate-password",
-			GetValue:     func(opts *token.Options) string { return opts.ClientCertPassword },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "client-certificate-password",
+			ArgumentName:     "--client-certificate-password",
+			GetValue:         func(opts *token.Options) string { return opts.ClientCertPassword },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{token.ServicePrincipalLogin},
 		},
 		{
-			FlagName:     "username",
-			ArgumentName: "--username",
-			GetValue:     func(opts *token.Options) string { return opts.Username },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "username",
+			ArgumentName:     "--username",
+			GetValue:         func(opts *token.Options) string { return opts.Username },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{token.ROPCLogin},
 		},
 		{
-			FlagName:     "password",
-			ArgumentName: "--password",
-			GetValue:     func(opts *token.Options) string { return opts.Password },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "password",
+			ArgumentName:     "--password",
+			GetValue:         func(opts *token.Options) string { return opts.Password },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{token.ROPCLogin},
 		},
 		{
-			FlagName:     "identity-resource-id",
-			ArgumentName: "--identity-resource-id",
-			GetValue:     func(opts *token.Options) string { return opts.IdentityResourceID },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "identity-resource-id",
+			ArgumentName:     "--identity-resource-id",
+			GetValue:         func(opts *token.Options) string { return opts.IdentityResourceID },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{token.MSILogin},
 		},
 		{
-			FlagName:     "authority-host",
-			ArgumentName: "--authority-host",
-			GetValue:     func(opts *token.Options) string { return opts.AuthorityHost },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "authority-host",
+			ArgumentName:     "--authority-host",
+			GetValue:         func(opts *token.Options) string { return opts.AuthorityHost },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{token.WorkloadIdentityLogin},
 		},
 		{
-			FlagName:     "federated-token-file",
-			ArgumentName: "--federated-token-file",
-			GetValue:     func(opts *token.Options) string { return opts.FederatedTokenFile },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "federated-token-file",
+			ArgumentName:     "--federated-token-file",
+			GetValue:         func(opts *token.Options) string { return opts.FederatedTokenFile },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{token.WorkloadIdentityLogin},
 		},
 		{
-			FlagName:     "cache-dir",
-			ArgumentName: "--cache-dir",
-			GetValue:     func(opts *token.Options) string { return opts.AuthRecordCacheDir },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "cache-dir",
+			ArgumentName:     "--cache-dir",
+			GetValue:         func(opts *token.Options) string { return opts.AuthRecordCacheDir },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{}, // Applies to all
 		},
 		{
-			FlagName:     "pop-claims",
-			ArgumentName: "--pop-claims",
-			GetValue:     func(opts *token.Options) string { return opts.PoPTokenClaims },
+			FlagName:        "pop-claims",
+			ArgumentName:    "--pop-claims",
+			GetValue:        func(opts *token.Options) string { return opts.PoPTokenClaims },
 			LegacyConfigKey: "",
-			IsRequired:   false,
+			IsRequired:      false,
 			ApplicableLogins: []string{
 				token.InteractiveLogin,
 				token.ServicePrincipalLogin,
@@ -198,12 +198,12 @@ func defaultMappings() []FlagMapping {
 		},
 		// Boolean flags
 		{
-			FlagName:     "legacy",
-			ArgumentName: "--legacy",
-			IsBoolean:    true,
-			GetBoolValue: func(opts *token.Options) bool { return opts.IsLegacy },
+			FlagName:        "legacy",
+			ArgumentName:    "--legacy",
+			IsBoolean:       true,
+			GetBoolValue:    func(opts *token.Options) bool { return opts.IsLegacy },
 			LegacyConfigKey: "config-mode",
-			IsRequired:   false,
+			IsRequired:      false,
 			ApplicableLogins: []string{
 				token.DeviceCodeLogin,
 				token.ServicePrincipalLogin,
@@ -211,24 +211,24 @@ func defaultMappings() []FlagMapping {
 			},
 		},
 		{
-			FlagName:     "pop-enabled",
-			ArgumentName: "--pop-enabled",
-			IsBoolean:    true,
-			GetBoolValue: func(opts *token.Options) bool { return opts.IsPoPTokenEnabled },
+			FlagName:        "pop-enabled",
+			ArgumentName:    "--pop-enabled",
+			IsBoolean:       true,
+			GetBoolValue:    func(opts *token.Options) bool { return opts.IsPoPTokenEnabled },
 			LegacyConfigKey: "",
-			IsRequired:   false,
+			IsRequired:      false,
 			ApplicableLogins: []string{
 				token.InteractiveLogin,
 				token.ServicePrincipalLogin,
 			},
 		},
 		{
-			FlagName:     "disable-environment-override",
-			ArgumentName: "--disable-environment-override",
-			IsBoolean:    true,
-			GetBoolValue: func(opts *token.Options) bool { return opts.DisableEnvironmentOverride },
-			LegacyConfigKey: "",
-			IsRequired:   false,
+			FlagName:         "disable-environment-override",
+			ArgumentName:     "--disable-environment-override",
+			IsBoolean:        true,
+			GetBoolValue:     func(opts *token.Options) bool { return opts.DisableEnvironmentOverride },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
 			ApplicableLogins: []string{token.ServicePrincipalLogin},
 		},
 	}
