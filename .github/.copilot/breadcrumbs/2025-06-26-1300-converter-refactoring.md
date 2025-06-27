@@ -142,6 +142,47 @@ type CompletedOptions struct { /* same fields */ }
 - `pkg/internal/converter/options_new.go` - New options implementation
 - `pkg/internal/converter/options_new_test.go` - Comprehensive tests
 
+### Task 3.2: Flag Registry and Mapping System ✅
+
+**Implementation**: Enhanced the existing flag registry system in `pkg/internal/converter/mapper/` with comprehensive mapping functionality.
+
+**Key Components**:
+
+```go
+type FlagMapping struct {
+    FlagName         string                      // CLI flag name
+    ArgumentName     string                      // Exec argument name  
+    GetValue         func(*token.Options) string // Value extractor
+    GetBoolValue     func(*token.Options) bool   // Boolean value extractor
+    LegacyConfigKey  string                      // Legacy config mapping
+    IsRequired       bool                        // Validation requirement
+    ApplicableLogins []string                    // Which login methods use this
+    IsBoolean        bool                        // Boolean vs string flag
+}
+
+type Registry struct {
+    mappings []FlagMapping
+}
+```
+
+**Key Features**:
+- **Declarative Mapping**: All 19 flags mapped declaratively instead of procedural if-else chains
+- **Type Safety**: Separate extractors for string vs boolean values
+- **Login Method Filtering**: Each flag declares which login methods it applies to
+- **Legacy Support**: Maintains compatibility with legacy auth provider config
+- **Comprehensive Testing**: 6 test functions covering all functionality
+
+**Flag Coverage**: All flags properly mapped including the problematic `login-hint` that sparked this refactoring:
+- Standard flags: `client-id`, `server-id`, `tenant-id`, `environment`
+- Interactive flags: `login-hint`, `redirect-url` 
+- SPN flags: `client-secret`, `client-certificate`, `client-certificate-password`
+- Boolean flags: `legacy`, `pop-enabled`, `disable-environment-override`
+- Specialized flags: `identity-resource-id`, `authority-host`, `federated-token-file`
+
+**Files Enhanced**:
+- `pkg/internal/converter/mapper/registry.go` - Enhanced existing registry
+- `pkg/internal/converter/mapper/registry_test.go` - Comprehensive test suite
+
 ## Changes Made
 
 *To be filled during implementation*
@@ -177,7 +218,7 @@ type CompletedOptions struct { /* same fields */ }
 
 ### Phase 3: Implement Core Infrastructure
 - [x] Task 3.1: Implement RawOptions → Validate() → Complete() pattern for converter options
-- [ ] Task 3.2: Implement flag registry and mapping system
+- [x] Task 3.2: Implement flag registry and mapping system
 - [ ] Task 3.3: Implement argument builder with fluent interface
 - [ ] Task 3.4: Implement login method handler interface and base functionality
 
