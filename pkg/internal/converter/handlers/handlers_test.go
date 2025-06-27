@@ -628,22 +628,289 @@ func TestDeviceCodeLoginHandlerBuildExecArgs(t *testing.T) {
 
 func TestServicePrincipalLoginHandler(t *testing.T) {
 	handler := NewServicePrincipalLoginHandler()
-
+	
 	if handler.GetName() != token.ServicePrincipalLogin {
 		t.Errorf("Expected name '%s', got '%s'", token.ServicePrincipalLogin, handler.GetName())
 	}
-
+	
 	// Test that required flags include the core auth flags
 	requiredFlags := handler.GetRequiredFlags()
 	expectedRequired := []string{"server-id", "client-id", "tenant-id"}
 	if len(requiredFlags) != len(expectedRequired) {
 		t.Errorf("Expected %d required flags, got %d", len(expectedRequired), len(requiredFlags))
 	}
-
+	
 	// Test that optional flags include certificate and secret options
 	optionalFlags := handler.GetOptionalFlags()
 	if len(optionalFlags) < 3 {
 		t.Errorf("Expected at least 3 optional flags, got %d", len(optionalFlags))
+	}
+}
+
+func TestServicePrincipalLoginHandlerValidation(t *testing.T) {
+	handler := NewServicePrincipalLoginHandler()
+	registry := mapper.NewRegistry()
+	
+	tests := []struct {
+		name     string
+		options  *token.Options
+		expected bool
+		errorMsg string
+	}{
+		{
+			name: "valid with client secret",
+			options: &token.Options{
+				ServerID:     "test-server",
+				ClientID:     "test-client",
+				TenantID:     "test-tenant",
+				ClientSecret: "test-secret",
+			},
+			expected: true,
+		},
+		{
+			name: "valid with client certificate",
+			options: &token.Options{
+				ServerID:   "test-server",
+				ClientID:   "test-client",
+				TenantID:   "test-tenant",
+				ClientCert: "/path/to/cert.pem",
+			},
+			expected: true,
+		},
+		{
+			name: "valid with client certificate and password",
+			options: &token.Options{
+				ServerID:           "test-server",
+				ClientID:           "test-client",
+				TenantID:           "test-tenant",
+				ClientCert:         "/path/to/cert.pfx",
+				ClientCertPassword: "cert-password",
+			},
+			expected: true,
+		},
+		{
+			name: "missing required field",
+			options: &token.Options{
+				ServerID:     "test-server",
+				// ClientID missing
+				TenantID:     "test-tenant",
+				ClientSecret: "test-secret",
+			},
+			expected: false,
+			errorMsg: "--client-id is required",
+		},
+		{
+			name: "missing authentication method",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				TenantID: "test-tenant",
+				// No ClientSecret or ClientCert
+			},
+			expected: false,
+			errorMsg: "requires either --client-secret or --client-certificate",
+		},
+		{
+			name: "pop-enabled without pop-claims",
+			options: &token.Options{
+				ServerID:          "test-server",
+				ClientID:          "test-client",
+				TenantID:          "test-tenant",
+				ClientSecret:      "test-secret",
+				IsPoPTokenEnabled: true,
+				PoPTokenClaims:    "",
+			},
+			expected: false,
+			errorMsg: "--pop-claims is required when --pop-enabled is specified",
+		},
+		{
+			name: "pop-claims without pop-enabled",
+			options: &token.Options{
+				ServerID:          "test-server",
+				ClientID:          "test-client",
+				TenantID:          "test-tenant",
+				ClientSecret:      "test-secret",
+				IsPoPTokenEnabled: false,
+				PoPTokenClaims:    "u=/subscriptions/test",
+			},
+			expected: false,
+			errorMsg: "--pop-enabled is required when --pop-claims is specified",
+		},
+		{
+			name: "valid with pop tokens",
+			options: &token.Options{
+				ServerID:          "test-server",
+				ClientID:          "test-client",
+				TenantID:          "test-tenant",
+				ClientSecret:      "test-secret",
+				IsPoPTokenEnabled: true,
+				PoPTokenClaims:    "u=/subscriptions/test",
+			},
+			expected: true,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     registry,
+				IsSet:            func(flag string) bool { return false },
+			}
+			
+			result := handler.Validate(ctx)
+			if result.IsValid != tt.expected {
+				t.Errorf("Expected IsValid=%v, got %v. Errors: %v", tt.expected, result.IsValid, result.Errors)
+			}
+			
+			if !tt.expected && tt.errorMsg != "" {
+				found := false
+				for _, err := range result.Errors {
+					if strings.Contains(err, tt.errorMsg) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected error containing '%s', got errors: %v", tt.errorMsg, result.Errors)
+				}
+			}
+		})
+	}
+}
+
+func TestServicePrincipalLoginHandlerBuildExecArgs(t *testing.T) {
+	handler := NewServicePrincipalLoginHandler()
+	registry := mapper.NewRegistry()
+	
+	tests := []struct {
+		name          string
+		options       *token.Options
+		isLegacy      bool
+		expectedLen   int
+		shouldContain []string
+	}{
+		{
+			name: "service principal with client secret",
+			options: &token.Options{
+				ServerID:     "test-server",
+				ClientID:     "test-client",
+				TenantID:     "test-tenant",
+				ClientSecret: "test-secret",
+			},
+			isLegacy:    false,
+			expectedLen: 9,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+				"--client-secret", "test-secret",
+			},
+		},
+		{
+			name: "service principal with client certificate",
+			options: &token.Options{
+				ServerID:   "test-server",
+				ClientID:   "test-client",
+				TenantID:   "test-tenant",
+				ClientCert: "/path/to/cert.pem",
+			},
+			isLegacy:    false,
+			expectedLen: 9,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+				"--client-certificate", "/path/to/cert.pem",
+			},
+		},
+		{
+			name: "service principal with certificate and password",
+			options: &token.Options{
+				ServerID:           "test-server",
+				ClientID:           "test-client",
+				TenantID:           "test-tenant",
+				ClientCert:         "/path/to/cert.pfx",
+				ClientCertPassword: "cert-password",
+			},
+			isLegacy:    false,
+			expectedLen: 11,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+				"--client-certificate", "/path/to/cert.pfx",
+				"--client-certificate-password", "cert-password",
+			},
+		},
+		{
+			name: "service principal with all options",
+			options: &token.Options{
+				ServerID:                   "test-server",
+				ClientID:                   "test-client",
+				TenantID:                   "test-tenant",
+				Environment:                "AzureCloud",
+				ClientSecret:               "test-secret",
+				IsPoPTokenEnabled:          true,
+				PoPTokenClaims:             "u=/subscriptions/test",
+				DisableEnvironmentOverride: true,
+			},
+			isLegacy:    true,
+			expectedLen: 16,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+				"--environment", "AzureCloud",
+				"--client-secret", "test-secret",
+				"--pop-enabled",
+				"--pop-claims", "u=/subscriptions/test",
+				"--legacy",
+				"--disable-environment-override",
+			},
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: tt.isLegacy,
+				FlagRegistry:     registry,
+				IsSet:            func(flag string) bool { return false },
+			}
+			
+			argBuilder := builder.NewExecArgsBuilder()
+			err := handler.BuildExecArgs(ctx, argBuilder)
+			
+			if err != nil {
+				t.Errorf("BuildExecArgs returned unexpected error: %v", err)
+			}
+			
+			args, err := argBuilder.Build()
+			if err != nil {
+				t.Errorf("Builder.Build() returned unexpected error: %v", err)
+			}
+			
+			if len(args) != tt.expectedLen {
+				t.Errorf("Expected %d arguments, got %d: %v", tt.expectedLen, len(args), args)
+			}
+			
+			// Check that all expected strings are present
+			argsStr := strings.Join(args, " ")
+			for _, expected := range tt.shouldContain {
+				if !strings.Contains(argsStr, expected) {
+					t.Errorf("Expected argument list to contain '%s', got: %v", expected, args)
+				}
+			}
+		})
 	}
 }
 
@@ -666,6 +933,165 @@ func TestMSILoginHandler(t *testing.T) {
 	expectedOptional := []string{"client-id", "identity-resource-id"}
 	if len(optionalFlags) != len(expectedOptional) {
 		t.Errorf("Expected %d optional flags, got %d", len(expectedOptional), len(optionalFlags))
+	}
+}
+
+func TestMSILoginHandlerValidation(t *testing.T) {
+	handler := NewMSILoginHandler()
+	registry := mapper.NewRegistry()
+
+	tests := []struct {
+		name     string
+		options  *token.Options
+		expected bool
+		errors   []string
+	}{
+		{
+			name: "valid MSI with server-id only",
+			options: &token.Options{
+				ServerID: "test-server",
+			},
+			expected: true,
+			errors:   nil,
+		},
+		{
+			name: "valid MSI with client-id",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+			},
+			expected: true,
+			errors:   nil,
+		},
+		{
+			name: "valid MSI with identity-resource-id",
+			options: &token.Options{
+				ServerID:           "test-server",
+				IdentityResourceID: "test-identity-resource",
+			},
+			expected: true,
+			errors:   nil,
+		},
+		{
+			name: "invalid - missing server-id",
+			options: &token.Options{
+				ClientID: "test-client",
+			},
+			expected: false,
+			errors:   []string{"--server-id is required"},
+		},
+		{
+			name: "invalid - both client-id and identity-resource-id",
+			options: &token.Options{
+				ServerID:           "test-server",
+				ClientID:           "test-client",
+				IdentityResourceID: "test-identity-resource",
+			},
+			expected: false,
+			errors:   []string{"MSI login cannot specify both --client-id and --identity-resource-id, they are mutually exclusive"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:      tt.options,
+				AuthInfo:     &api.AuthInfo{},
+				FlagRegistry: registry,
+				IsSet:        func(flag string) bool { return false },
+			}
+
+			result := handler.Validate(ctx)
+			if result.IsValid != tt.expected {
+				t.Errorf("Expected IsValid: %v, got: %v", tt.expected, result.IsValid)
+			}
+
+			if len(result.Errors) != len(tt.errors) {
+				t.Errorf("Expected %d errors, got %d", len(tt.errors), len(result.Errors))
+			}
+
+			for i, expectedError := range tt.errors {
+				if i < len(result.Errors) && !strings.Contains(result.Errors[i], expectedError) {
+					t.Errorf("Expected error to contain '%s', got '%s'", expectedError, result.Errors[i])
+				}
+			}
+		})
+	}
+}
+
+func TestMSILoginHandlerBuildExecArgs(t *testing.T) {
+	handler := NewMSILoginHandler()
+	registry := mapper.NewRegistry()
+
+	tests := []struct {
+		name         string
+		options      *token.Options
+		expectedArgs []string
+	}{
+		{
+			name: "MSI with server-id only",
+			options: &token.Options{
+				ServerID: "test-server",
+			},
+			expectedArgs: []string{"get-token", "--server-id", "test-server"},
+		},
+		{
+			name: "MSI with client-id",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+			},
+			expectedArgs: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client"},
+		},
+		{
+			name: "MSI with identity-resource-id",
+			options: &token.Options{
+				ServerID:           "test-server",
+				IdentityResourceID: "test-identity-resource",
+			},
+			expectedArgs: []string{"get-token", "--server-id", "test-server", "--identity-resource-id", "test-identity-resource"},
+		},
+		{
+			name: "MSI with empty optional fields",
+			options: &token.Options{
+				ServerID:           "test-server",
+				ClientID:           "", // Empty should be skipped
+				IdentityResourceID: "", // Empty should be skipped
+			},
+			expectedArgs: []string{"get-token", "--server-id", "test-server"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:      tt.options,
+				AuthInfo:     &api.AuthInfo{},
+				FlagRegistry: registry,
+				IsSet:        func(flag string) bool { return false },
+			}
+
+			argBuilder := builder.NewExecArgsBuilder()
+			err := handler.BuildExecArgs(ctx, argBuilder)
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+
+			args, buildErr := argBuilder.Build()
+			if buildErr != nil {
+				t.Errorf("Unexpected build error: %v", buildErr)
+			}
+
+			if len(args) != len(tt.expectedArgs) {
+				t.Errorf("Expected %d args, got %d. Expected: %v, Got: %v", len(tt.expectedArgs), len(args), tt.expectedArgs, args)
+			}
+
+			for i, expectedArg := range tt.expectedArgs {
+				if i < len(args) && args[i] != expectedArg {
+					t.Errorf("Expected arg[%d] to be '%s', got '%s'", i, expectedArg, args[i])
+				}
+			}
+		})
 	}
 }
 

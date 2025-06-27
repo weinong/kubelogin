@@ -222,21 +222,74 @@ func NewServicePrincipalLoginHandler() *ServicePrincipalLoginHandler {
 	}
 }
 
-// BuildExecArgs builds exec arguments for service principal login
-func (h *ServicePrincipalLoginHandler) BuildExecArgs(ctx *ConversionContext, builder *builder.ExecArgsBuilder) error {
-	mappings := ctx.FlagRegistry.GetMappingsForLogin(token.ServicePrincipalLogin)
-
-	for _, mapping := range mappings {
-		if mapping.IsBoolean {
-			value := mapping.GetBoolValue(ctx.Options)
-			builder.AddFlag(mapping.ArgumentName, value)
-		} else {
-			value := mapping.GetValue(ctx.Options)
-			if mapping.IsRequired || value != "" {
-				builder.AddOptionalArgument(mapping.ArgumentName, value)
-			}
-		}
+// Validate performs service principal login specific validation
+func (h *ServicePrincipalLoginHandler) Validate(ctx *ConversionContext) ValidationResult {
+	// Start with base validation
+	result := h.BaseHandler.Validate(ctx)
+	if !result.IsValid {
+		return result
 	}
+
+	var errors []string
+
+	// Service principal specific validations
+	// At least one authentication method must be provided
+	hasClientSecret := ctx.Options.ClientSecret != ""
+	hasClientCert := ctx.Options.ClientCert != ""
+	
+	if !hasClientSecret && !hasClientCert {
+		errors = append(errors, "service principal login requires either --client-secret or --client-certificate")
+	}
+
+	// PoP token validation - both flags must be provided together
+	isPoPEnabled := ctx.Options.IsPoPTokenEnabled
+	popClaims := ctx.Options.PoPTokenClaims
+	
+	if isPoPEnabled && popClaims == "" {
+		errors = append(errors, "--pop-claims is required when --pop-enabled is specified for service principal login")
+	}
+	
+	if !isPoPEnabled && popClaims != "" {
+		errors = append(errors, "--pop-enabled is required when --pop-claims is specified for service principal login")
+	}
+
+	// Combine any new errors with existing ones
+	if len(errors) > 0 {
+		result.Errors = append(result.Errors, errors...)
+		result.IsValid = false
+	}
+
+	return result
+}
+
+// BuildExecArgs builds exec arguments for service principal login using convenience builders
+func (h *ServicePrincipalLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+	// Add required authentication arguments
+	argBuilder.AddRequiredAuthArgs(builder.RequiredAuthArgs{
+		ServerID: ctx.Options.ServerID,
+		ClientID: ctx.Options.ClientID,
+		TenantID: ctx.Options.TenantID,
+	})
+
+	// Add optional environment
+	argBuilder.AddOptionalArgument("--environment", ctx.Options.Environment)
+
+	// Add service principal authentication arguments
+	argBuilder.AddServicePrincipalArgs(builder.ServicePrincipalArgs{
+		ClientSecret:               ctx.Options.ClientSecret,
+		ClientCertificate:          ctx.Options.ClientCert,
+		ClientCertificatePassword:  ctx.Options.ClientCertPassword,
+		DisableEnvironmentOverride: ctx.Options.DisableEnvironmentOverride,
+	})
+
+	// Add PoP token arguments with validation
+	argBuilder.AddPoPTokenArgs(builder.PoPTokenArgs{
+		Enabled: ctx.Options.IsPoPTokenEnabled,
+		Claims:  ctx.Options.PoPTokenClaims,
+	})
+
+	// Add optional flags
+	argBuilder.AddFlag("--legacy", ctx.IsLegacyProvider)
 
 	return nil
 }
@@ -257,16 +310,48 @@ func NewMSILoginHandler() *MSILoginHandler {
 	}
 }
 
-// BuildExecArgs builds exec arguments for MSI login
-func (h *MSILoginHandler) BuildExecArgs(ctx *ConversionContext, builder *builder.ExecArgsBuilder) error {
-	mappings := ctx.FlagRegistry.GetMappingsForLogin(token.MSILogin)
-
-	for _, mapping := range mappings {
-		value := mapping.GetValue(ctx.Options)
-		if mapping.IsRequired || value != "" {
-			builder.AddOptionalArgument(mapping.ArgumentName, value)
-		}
+// Validate performs MSI login specific validation
+func (h *MSILoginHandler) Validate(ctx *ConversionContext) ValidationResult {
+	// Start with base validation
+	result := h.BaseHandler.Validate(ctx)
+	if !result.IsValid {
+		return result
 	}
+
+	var errors []string
+
+	// MSI specific validations
+	// Client ID and Identity Resource ID are mutually exclusive
+	hasClientID := ctx.Options.ClientID != ""
+	hasIdentityResourceID := ctx.Options.IdentityResourceID != ""
+	
+	if hasClientID && hasIdentityResourceID {
+		errors = append(errors, "MSI login cannot specify both --client-id and --identity-resource-id, they are mutually exclusive")
+	}
+
+	// Combine any new errors with existing ones
+	if len(errors) > 0 {
+		result.Errors = append(result.Errors, errors...)
+		result.IsValid = false
+	}
+
+	return result
+}
+
+// BuildExecArgs builds exec arguments for MSI login using convenience builders
+func (h *MSILoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+	// Add required server ID argument
+	argBuilder.AddRequiredArgument("--server-id", ctx.Options.ServerID)
+
+	// Add identity arguments - either client ID or identity resource ID
+	if ctx.Options.ClientID != "" {
+		argBuilder.AddOptionalArgument("--client-id", ctx.Options.ClientID)
+	}
+
+	// Add MSI specific arguments using convenience builder
+	argBuilder.AddMSIArgs(builder.MSIArgs{
+		IdentityResourceID: ctx.Options.IdentityResourceID,
+	})
 
 	return nil
 }

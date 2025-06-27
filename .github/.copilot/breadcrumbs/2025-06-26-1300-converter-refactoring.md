@@ -571,8 +571,8 @@ get-token --server-id test-server --client-id test-client --tenant-id test-tenan
 ### Phase 4: Implement Login Method Handlers
 - [x] Task 4.1: Implement InteractiveLoginHandler with proper flag handling
 - [x] Task 4.2: Implement DeviceCodeLoginHandler
-- [ ] Task 4.3: Implement ServicePrincipalLoginHandler  
-- [ ] Task 4.4: Implement MSILoginHandler
+- [x] Task 4.3: Implement ServicePrincipalLoginHandler  
+- [x] Task 4.4: Implement MSILoginHandler
 - [ ] Task 4.5: Implement AzureCLILoginHandler
 - [ ] Task 4.6: Implement WorkloadIdentityLoginHandler
 - [ ] Task 4.7: Implement ROPCLoginHandler
