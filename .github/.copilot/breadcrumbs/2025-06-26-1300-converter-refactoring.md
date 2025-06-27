@@ -331,6 +331,116 @@ if exists {
 - **Registry Operations**: Handler registration and lookup work correctly
 - **Error Handling**: Edge cases and missing handlers are properly handled
 
+### Task 4.1: Implement InteractiveLoginHandler with Proper Flag Handling ✅
+
+**Implementation**: Enhanced the InteractiveLoginHandler with sophisticated validation and argument building using the convenience builders from Task 3.3.
+
+**Key Enhancements**:
+
+1. **Advanced Validation**:
+   - **Cross-field Validation**: PoP token flags must be provided together
+   - **Interactive-specific Rules**: Enhanced validation beyond base handler requirements
+   - **Clear Error Messages**: Specific error messages for interactive login scenarios
+
+2. **Sophisticated Argument Building**:
+   - **Convenience Builders**: Uses `RequiredAuthArgs`, `InteractiveArgs`, and `PoPTokenArgs`
+   - **Type Safety**: Leverages type-safe builders instead of manual string manipulation
+   - **Clean Code**: Readable, maintainable implementation using fluent interface
+
+3. **Comprehensive Flag Support**:
+   - **Required Flags**: `server-id`, `client-id`, `tenant-id`
+   - **Optional Core**: `environment`
+   - **Interactive-specific**: `redirect-url`, `login-hint`
+   - **Advanced Features**: `pop-enabled`, `pop-claims` with cross-validation
+
+**Enhanced Validation Logic**:
+```go
+func (h *InteractiveLoginHandler) Validate(ctx *ConversionContext) ValidationResult {
+    // Base validation from BaseHandler
+    result := h.BaseHandler.Validate(ctx)
+    
+    // Interactive-specific PoP token validation
+    isPoPEnabled := ctx.Options.IsPoPTokenEnabled
+    popClaims := ctx.Options.PoPTokenClaims
+    
+    if isPoPEnabled && popClaims == "" {
+        errors = append(errors, "--pop-claims is required when --pop-enabled is specified")
+    }
+    
+    if !isPoPEnabled && popClaims != "" {
+        errors = append(errors, "--pop-enabled is required when --pop-claims is specified")
+    }
+    
+    return result
+}
+```
+
+**Sophisticated Argument Building**:
+```go
+func (h *InteractiveLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+    // Required authentication arguments
+    argBuilder.AddRequiredAuthArgs(builder.RequiredAuthArgs{
+        ServerID: ctx.Options.ServerID,
+        ClientID: ctx.Options.ClientID,
+        TenantID: ctx.Options.TenantID,
+    })
+
+    // Optional environment
+    argBuilder.AddOptionalArgument("--environment", ctx.Options.Environment)
+
+    // Interactive-specific arguments
+    argBuilder.AddInteractiveArgs(builder.InteractiveArgs{
+        RedirectURL: ctx.Options.RedirectURL,
+        LoginHint:   ctx.Options.LoginHint,
+    })
+
+    // PoP token arguments with validation
+    argBuilder.AddPoPTokenArgs(builder.PoPTokenArgs{
+        Enabled: ctx.Options.IsPoPTokenEnabled,
+        Claims:  ctx.Options.PoPTokenClaims,
+    })
+
+    return nil
+}
+```
+
+**Key Improvements Over Generic Implementation**:
+- **Targeted Logic**: Uses specific convenience builders instead of generic loop
+- **Better Validation**: Interactive-specific validation rules beyond base requirements
+- **Cleaner Code**: More readable and maintainable than the original switch statement
+- **Type Safety**: Impossible to create malformed argument combinations
+- **Comprehensive Testing**: 4 dedicated test functions covering all scenarios
+
+**Argument Generation Examples**:
+
+*Minimal Interactive Login*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant
+```
+
+*Full Featured Interactive Login*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant \
+  --environment AzureCloud --redirect-url http://localhost:8080 \
+  --login-hint user@example.com --pop-enabled --pop-claims u=/subscriptions/test
+```
+
+**Testing Coverage**:
+- **Basic Functionality**: Handler creation, name, required/optional flags
+- **Validation Scenarios**: Valid options, missing required fields, PoP token validation
+- **Argument Building**: Minimal, full-featured, and partial option scenarios
+- **Error Handling**: Invalid PoP token combinations properly detected
+
+**Files Enhanced**:
+- `pkg/internal/converter/handlers/handlers.go` - Enhanced InteractiveLoginHandler implementation
+- `pkg/internal/converter/handlers/handlers_test.go` - Added 4 comprehensive test functions
+
+**Standards Compliance**:
+- Follows the LoginMethodHandler interface exactly
+- Uses convenience builders from Task 3.3 architecture
+- Implements validation patterns from the CLI flags specification
+- Maintains backward compatibility with existing exec argument format
+
 ## Changes Made
 
 *To be filled during implementation*
@@ -371,7 +481,7 @@ if exists {
 - [x] Task 3.4: Implement login method handler interface and base functionality
 
 ### Phase 4: Implement Login Method Handlers
-- [ ] Task 4.1: Implement InteractiveLoginHandler with proper flag handling
+- [x] Task 4.1: Implement InteractiveLoginHandler with proper flag handling
 - [ ] Task 4.2: Implement DeviceCodeLoginHandler
 - [ ] Task 4.3: Implement ServicePrincipalLoginHandler  
 - [ ] Task 4.4: Implement MSILoginHandler

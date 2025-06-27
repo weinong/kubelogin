@@ -113,22 +113,61 @@ func NewInteractiveLoginHandler() *InteractiveLoginHandler {
 	}
 }
 
-// BuildExecArgs builds exec arguments for interactive login
-func (h *InteractiveLoginHandler) BuildExecArgs(ctx *ConversionContext, builder *builder.ExecArgsBuilder) error {
-	// Add required arguments
-	mappings := ctx.FlagRegistry.GetMappingsForLogin(token.InteractiveLogin)
-
-	for _, mapping := range mappings {
-		if mapping.IsBoolean {
-			value := mapping.GetBoolValue(ctx.Options)
-			builder.AddFlag(mapping.ArgumentName, value)
-		} else {
-			value := mapping.GetValue(ctx.Options)
-			if mapping.IsRequired || value != "" {
-				builder.AddOptionalArgument(mapping.ArgumentName, value)
-			}
-		}
+// Validate performs interactive login specific validation
+func (h *InteractiveLoginHandler) Validate(ctx *ConversionContext) ValidationResult {
+	// Start with base validation
+	result := h.BaseHandler.Validate(ctx)
+	if !result.IsValid {
+		return result
 	}
+
+	var errors []string
+
+	// Interactive login specific validations
+	// PoP token validation - both flags must be provided together
+	isPoPEnabled := ctx.Options.IsPoPTokenEnabled
+	popClaims := ctx.Options.PoPTokenClaims
+
+	if isPoPEnabled && popClaims == "" {
+		errors = append(errors, "--pop-claims is required when --pop-enabled is specified for interactive login")
+	}
+
+	if !isPoPEnabled && popClaims != "" {
+		errors = append(errors, "--pop-enabled is required when --pop-claims is specified for interactive login")
+	}
+
+	// Combine any new errors with existing ones
+	if len(errors) > 0 {
+		result.Errors = append(result.Errors, errors...)
+		result.IsValid = false
+	}
+
+	return result
+}
+
+// BuildExecArgs builds exec arguments for interactive login using convenience builders
+func (h *InteractiveLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+	// Add required authentication arguments
+	argBuilder.AddRequiredAuthArgs(builder.RequiredAuthArgs{
+		ServerID: ctx.Options.ServerID,
+		ClientID: ctx.Options.ClientID,
+		TenantID: ctx.Options.TenantID,
+	})
+
+	// Add optional environment
+	argBuilder.AddOptionalArgument("--environment", ctx.Options.Environment)
+
+	// Add interactive-specific arguments
+	argBuilder.AddInteractiveArgs(builder.InteractiveArgs{
+		RedirectURL: ctx.Options.RedirectURL,
+		LoginHint:   ctx.Options.LoginHint,
+	})
+
+	// Add PoP token arguments with validation
+	argBuilder.AddPoPTokenArgs(builder.PoPTokenArgs{
+		Enabled: ctx.Options.IsPoPTokenEnabled,
+		Claims:  ctx.Options.PoPTokenClaims,
+	})
 
 	return nil
 }

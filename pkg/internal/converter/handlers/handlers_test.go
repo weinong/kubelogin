@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Azure/kubelogin/pkg/internal/converter/builder"
@@ -156,16 +157,223 @@ func TestInteractiveLoginHandler(t *testing.T) {
 	}
 }
 
+func TestInteractiveLoginHandlerValidation(t *testing.T) {
+	handler := NewInteractiveLoginHandler()
+	registry := mapper.NewRegistry()
+
+	tests := []struct {
+		name     string
+		options  *token.Options
+		expected bool
+		errorMsg string
+	}{
+		{
+			name: "valid options",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				TenantID: "test-tenant",
+			},
+			expected: true,
+		},
+		{
+			name: "missing required field",
+			options: &token.Options{
+				ServerID: "test-server",
+				// ClientID missing
+				TenantID: "test-tenant",
+			},
+			expected: false,
+			errorMsg: "--client-id is required",
+		},
+		{
+			name: "pop-enabled without pop-claims",
+			options: &token.Options{
+				ServerID:          "test-server",
+				ClientID:          "test-client",
+				TenantID:          "test-tenant",
+				IsPoPTokenEnabled: true,
+				PoPTokenClaims:    "",
+			},
+			expected: false,
+			errorMsg: "--pop-claims is required when --pop-enabled is specified",
+		},
+		{
+			name: "pop-claims without pop-enabled",
+			options: &token.Options{
+				ServerID:          "test-server",
+				ClientID:          "test-client",
+				TenantID:          "test-tenant",
+				IsPoPTokenEnabled: false,
+				PoPTokenClaims:    "u=/subscriptions/test",
+			},
+			expected: false,
+			errorMsg: "--pop-enabled is required when --pop-claims is specified",
+		},
+		{
+			name: "valid with pop tokens",
+			options: &token.Options{
+				ServerID:          "test-server",
+				ClientID:          "test-client",
+				TenantID:          "test-tenant",
+				IsPoPTokenEnabled: true,
+				PoPTokenClaims:    "u=/subscriptions/test",
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     registry,
+				IsSet:            func(flag string) bool { return false },
+			}
+
+			result := handler.Validate(ctx)
+			if result.IsValid != tt.expected {
+				t.Errorf("Expected IsValid=%v, got %v. Errors: %v", tt.expected, result.IsValid, result.Errors)
+			}
+
+			if !tt.expected && tt.errorMsg != "" {
+				found := false
+				for _, err := range result.Errors {
+					if strings.Contains(err, tt.errorMsg) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected error containing '%s', got errors: %v", tt.errorMsg, result.Errors)
+				}
+			}
+		})
+	}
+}
+
 func TestInteractiveLoginHandlerBuildExecArgs(t *testing.T) {
 	handler := NewInteractiveLoginHandler()
 	registry := mapper.NewRegistry()
 
+	tests := []struct {
+		name          string
+		options       *token.Options
+		expectedLen   int
+		shouldContain []string
+	}{
+		{
+			name: "minimal interactive login",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				TenantID: "test-tenant",
+			},
+			expectedLen: 7,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+			},
+		},
+		{
+			name: "interactive login with all options",
+			options: &token.Options{
+				ServerID:          "test-server",
+				ClientID:          "test-client",
+				TenantID:          "test-tenant",
+				Environment:       "AzureCloud",
+				RedirectURL:       "http://localhost:8080",
+				LoginHint:         "user@example.com",
+				IsPoPTokenEnabled: true,
+				PoPTokenClaims:    "u=/subscriptions/test",
+			},
+			expectedLen: 16,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+				"--environment", "AzureCloud",
+				"--redirect-url", "http://localhost:8080",
+				"--login-hint", "user@example.com",
+				"--pop-enabled",
+				"--pop-claims", "u=/subscriptions/test",
+			},
+		},
+		{
+			name: "interactive login with partial options",
+			options: &token.Options{
+				ServerID:    "test-server",
+				ClientID:    "test-client",
+				TenantID:    "test-tenant",
+				Environment: "AzureCloud",
+				LoginHint:   "user@example.com",
+				// No PoP tokens, no redirect URL
+			},
+			expectedLen: 11,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+				"--environment", "AzureCloud",
+				"--login-hint", "user@example.com",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     registry,
+				IsSet:            func(flag string) bool { return false },
+			}
+
+			argBuilder := builder.NewExecArgsBuilder()
+			err := handler.BuildExecArgs(ctx, argBuilder)
+
+			if err != nil {
+				t.Errorf("BuildExecArgs returned unexpected error: %v", err)
+			}
+
+			args, err := argBuilder.Build()
+			if err != nil {
+				t.Errorf("Builder.Build() returned unexpected error: %v", err)
+			}
+
+			if len(args) != tt.expectedLen {
+				t.Errorf("Expected %d arguments, got %d: %v", tt.expectedLen, len(args), args)
+			}
+
+			// Check that all expected strings are present
+			argsStr := strings.Join(args, " ")
+			for _, expected := range tt.shouldContain {
+				if !strings.Contains(argsStr, expected) {
+					t.Errorf("Expected argument list to contain '%s', got: %v", expected, args)
+				}
+			}
+		})
+	}
+}
+
+func TestInteractiveLoginHandlerBuildExecArgsValidation(t *testing.T) {
+	handler := NewInteractiveLoginHandler()
+	registry := mapper.NewRegistry()
+
+	// Test that PoP validation happens in the builder
 	options := &token.Options{
-		ServerID:    "test-server",
-		ClientID:    "test-client",
-		TenantID:    "test-tenant",
-		Environment: "AzureCloud",
-		LoginHint:   "user@example.com",
+		ServerID:          "test-server",
+		ClientID:          "test-client",
+		TenantID:          "test-tenant",
+		IsPoPTokenEnabled: true,
+		PoPTokenClaims:    "", // Invalid: enabled without claims
 	}
 
 	ctx := &ConversionContext{
@@ -176,25 +384,21 @@ func TestInteractiveLoginHandlerBuildExecArgs(t *testing.T) {
 		IsSet:            func(flag string) bool { return false },
 	}
 
-	builder := builder.NewExecArgsBuilder()
-	err := handler.BuildExecArgs(ctx, builder)
+	argBuilder := builder.NewExecArgsBuilder()
+	err := handler.BuildExecArgs(ctx, argBuilder)
 
 	if err != nil {
 		t.Errorf("BuildExecArgs returned unexpected error: %v", err)
 	}
 
-	args, err := builder.Build()
-	if err != nil {
-		t.Errorf("Builder.Build() returned unexpected error: %v", err)
+	// The validation error should occur when building
+	_, err = argBuilder.Build()
+	if err == nil {
+		t.Error("Expected Build() to return error for invalid PoP token configuration")
 	}
 
-	// Should contain get-token and various arguments
-	if len(args) < 3 {
-		t.Errorf("Expected at least 3 arguments, got %d: %v", len(args), args)
-	}
-
-	if args[0] != "get-token" {
-		t.Errorf("Expected first argument to be 'get-token', got '%s'", args[0])
+	if !strings.Contains(err.Error(), "pop-claims") {
+		t.Errorf("Expected error about pop-claims, got: %v", err)
 	}
 }
 
