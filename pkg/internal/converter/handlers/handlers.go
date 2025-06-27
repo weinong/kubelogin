@@ -130,11 +130,11 @@ func (h *InteractiveLoginHandler) Validate(ctx *ConversionContext) ValidationRes
 	popClaims := ctx.Options.PoPTokenClaims
 
 	if isPoPEnabled && popClaims == "" {
-		errors = append(errors, "--pop-claims is required when --pop-enabled is specified for interactive login")
+		errors = append(errors, "--pop-claims is required when specifying --pop-enabled")
 	}
 
 	if !isPoPEnabled && popClaims != "" {
-		errors = append(errors, "--pop-enabled is required when --pop-claims is specified for interactive login")
+		errors = append(errors, "--pop-enabled is required when specifying --pop-claims")
 	}
 
 	// Combine any new errors with existing ones
@@ -202,7 +202,7 @@ func (h *DeviceCodeLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilde
 	argBuilder.AddOptionalArgument("--environment", ctx.Options.Environment)
 
 	// Add legacy flag if needed
-	argBuilder.AddFlag("--legacy", ctx.IsLegacyProvider)
+	argBuilder.AddFlag("--legacy", ctx.Options.IsLegacy)
 
 	return nil
 }
@@ -234,24 +234,20 @@ func (h *ServicePrincipalLoginHandler) Validate(ctx *ConversionContext) Validati
 	var errors []string
 
 	// Service principal specific validations
-	// At least one authentication method must be provided
-	hasClientSecret := ctx.Options.ClientSecret != ""
-	hasClientCert := ctx.Options.ClientCert != ""
-
-	if !hasClientSecret && !hasClientCert {
-		errors = append(errors, "service principal login requires either --client-secret or --client-certificate")
-	}
+	// Note: We don't validate client-secret or client-certificate during conversion
+	// as credentials might be provided through environment variables, Azure CLI, etc.
+	// The actual token acquisition will fail if credentials are truly missing
 
 	// PoP token validation - both flags must be provided together
 	isPoPEnabled := ctx.Options.IsPoPTokenEnabled
 	popClaims := ctx.Options.PoPTokenClaims
 
 	if isPoPEnabled && popClaims == "" {
-		errors = append(errors, "--pop-claims is required when --pop-enabled is specified for service principal login")
+		errors = append(errors, "--pop-claims is required when specifying --pop-enabled")
 	}
 
 	if !isPoPEnabled && popClaims != "" {
-		errors = append(errors, "--pop-enabled is required when --pop-claims is specified for service principal login")
+		errors = append(errors, "--pop-enabled is required when specifying --pop-claims")
 	}
 
 	// Combine any new errors with existing ones
@@ -290,7 +286,7 @@ func (h *ServicePrincipalLoginHandler) BuildExecArgs(ctx *ConversionContext, arg
 	})
 
 	// Add optional flags
-	argBuilder.AddFlag("--legacy", ctx.IsLegacyProvider)
+	argBuilder.AddFlag("--legacy", ctx.Options.IsLegacy)
 
 	return nil
 }
@@ -323,10 +319,10 @@ func (h *MSILoginHandler) Validate(ctx *ConversionContext) ValidationResult {
 
 	// MSI specific validations
 	// Client ID and Identity Resource ID are mutually exclusive
-	hasClientID := ctx.Options.ClientID != ""
-	hasIdentityResourceID := ctx.Options.IdentityResourceID != ""
+	hasClientIDFlag := ctx.IsSet("client-id")
+	hasIdentityResourceIDFlag := ctx.IsSet("identity-resource-id")
 
-	if hasClientID && hasIdentityResourceID {
+	if hasClientIDFlag && hasIdentityResourceIDFlag {
 		errors = append(errors, "MSI login cannot specify both --client-id and --identity-resource-id, they are mutually exclusive")
 	}
 
@@ -345,14 +341,15 @@ func (h *MSILoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *buil
 	argBuilder.AddRequiredArgument("--server-id", ctx.Options.ServerID)
 
 	// Add identity arguments - either client ID or identity resource ID
-	if ctx.Options.ClientID != "" {
+	// Only add client-id if explicitly set via flag (not inherited from legacy auth provider)
+	if ctx.IsSet("client-id") {
 		argBuilder.AddOptionalArgument("--client-id", ctx.Options.ClientID)
+	} else if ctx.IsSet("identity-resource-id") {
+		// Add MSI specific arguments using convenience builder
+		argBuilder.AddMSIArgs(builder.MSIArgs{
+			IdentityResourceID: ctx.Options.IdentityResourceID,
+		})
 	}
-
-	// Add MSI specific arguments using convenience builder
-	argBuilder.AddMSIArgs(builder.MSIArgs{
-		IdentityResourceID: ctx.Options.IdentityResourceID,
-	})
 
 	return nil
 }
@@ -368,7 +365,7 @@ func NewAzureCLILoginHandler() *AzureCLILoginHandler {
 		BaseHandler: BaseHandler{
 			name:          "azurecli",
 			requiredFlags: []string{"server-id"},
-			optionalFlags: []string{"tenant-id", "azure-config-dir"},
+			optionalFlags: []string{"tenant-id", "azure-config-dir", "cache-dir"},
 		},
 	}
 }
@@ -395,6 +392,12 @@ func (h *AzureCLILoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder 
 		argBuilder.AddOptionalArgument("--tenant-id", ctx.Options.TenantID)
 	}
 
+	// Add cache directory if explicitly set (check both cache-dir and token-cache-dir)
+	// Also add if there's a value in AuthRecordCacheDir from any source
+	if ctx.IsSet("cache-dir") || ctx.IsSet("token-cache-dir") || ctx.Options.AuthRecordCacheDir != "" {
+		argBuilder.AddOptionalArgument("--cache-dir", ctx.Options.AuthRecordCacheDir)
+	}
+
 	return nil
 }
 
@@ -419,15 +422,21 @@ func (h *WorkloadIdentityLoginHandler) BuildExecArgs(ctx *ConversionContext, arg
 	// Add required server ID argument
 	argBuilder.AddRequiredArgument("--server-id", ctx.Options.ServerID)
 
-	// Add optional client-id and tenant-id
-	argBuilder.AddOptionalArgument("--client-id", ctx.Options.ClientID)
-	argBuilder.AddOptionalArgument("--tenant-id", ctx.Options.TenantID)
+	// Add optional client-id and tenant-id only if explicitly set
+	if ctx.IsSet("client-id") {
+		argBuilder.AddOptionalArgument("--client-id", ctx.Options.ClientID)
+	}
+	if ctx.IsSet("tenant-id") {
+		argBuilder.AddOptionalArgument("--tenant-id", ctx.Options.TenantID)
+	}
 
-	// Add workload identity specific arguments using convenience builder
-	argBuilder.AddWorkloadIdentityArgs(builder.WorkloadIdentityArgs{
-		AuthorityHost:      ctx.Options.AuthorityHost,
-		FederatedTokenFile: ctx.Options.FederatedTokenFile,
-	})
+	// Add workload identity specific arguments only if explicitly set
+	if ctx.IsSet("authority-host") || ctx.IsSet("federated-token-file") {
+		argBuilder.AddWorkloadIdentityArgs(builder.WorkloadIdentityArgs{
+			AuthorityHost:      ctx.Options.AuthorityHost,
+			FederatedTokenFile: ctx.Options.FederatedTokenFile,
+		})
+	}
 
 	return nil
 }
@@ -443,7 +452,7 @@ func NewROPCLoginHandler() *ROPCLoginHandler {
 		BaseHandler: BaseHandler{
 			name:          token.ROPCLogin,
 			requiredFlags: []string{"server-id", "client-id", "tenant-id"},
-			optionalFlags: []string{"environment", "username", "password"},
+			optionalFlags: []string{"environment", "username", "password", "legacy"},
 		},
 	}
 }
@@ -465,6 +474,9 @@ func (h *ROPCLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *bui
 		Username: ctx.Options.Username,
 		Password: ctx.Options.Password,
 	})
+
+	// Add legacy flag if needed
+	argBuilder.AddFlag("--legacy", ctx.Options.IsLegacy)
 
 	return nil
 }

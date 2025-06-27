@@ -14,10 +14,10 @@ type ExecArgsBuilder struct {
 	errors []error
 }
 
-// NewExecArgsBuilder creates a new exec args builder with the base command
+// NewExecArgsBuilder creates a new exec args builder
 func NewExecArgsBuilder() *ExecArgsBuilder {
 	return &ExecArgsBuilder{
-		args:   []string{"get-token"},
+		args:   []string{},
 		errors: nil,
 	}
 }
@@ -84,9 +84,9 @@ func (b *ExecArgsBuilder) Length() int {
 	return len(b.args)
 }
 
-// Reset clears all arguments except the base command and clears all errors
+// Reset clears all arguments and clears all errors
 func (b *ExecArgsBuilder) Reset() *ExecArgsBuilder {
-	b.args = []string{"get-token"}
+	b.args = []string{}
 	b.errors = nil
 	return b
 }

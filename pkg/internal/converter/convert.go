@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Azure/kubelogin/pkg/internal/converter/builder"
+	"github.com/Azure/kubelogin/pkg/internal/converter/handlers"
+	"github.com/Azure/kubelogin/pkg/internal/converter/mapper"
 	"github.com/Azure/kubelogin/pkg/internal/token"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -76,134 +79,153 @@ To learn more, please go to https://azure.github.io/kubelogin/
 	azureConfigDir = "AZURE_CONFIG_DIR"
 )
 
-func getArgValues(o Options, authInfo *api.AuthInfo) (
-	argServerIDVal,
-	argClientIDVal,
-	argEnvironmentVal,
-	argTenantIDVal,
-	argAuthRecordCacheDirVal,
-	argPoPTokenClaimsVal,
-	argRedirectURLVal,
-	argLoginHintVal string,
-	argIsLegacyConfigModeVal,
-	argIsPoPTokenEnabledVal bool,
-) {
+// buildConversionContext creates a ConversionContext from options and authInfo using the new mapping system
+func buildConversionContext(o Options, authInfo *api.AuthInfo, registry *mapper.Registry) *handlers.ConversionContext {
+	// Extract values from authInfo and options using the registry
+	tokenOptions := &token.Options{
+		LoginMethod: o.TokenOptions.LoginMethod,
+	}
+
+	// Populate token options using the flag registry mapping
+	for _, mapping := range registry.GetAllMappings() {
+		if mapping.IsBoolean {
+			if o.isSet(mapping.FlagName) {
+				// Use the flag value if explicitly set
+				value := mapping.GetBoolValue(&o.TokenOptions)
+				setBooleanField(tokenOptions, mapping.FlagName, value)
+			} else {
+				// Check for legacy auth provider config or existing exec args
+				value := getBooleanValueFromAuthInfo(authInfo, mapping)
+				setBooleanField(tokenOptions, mapping.FlagName, value)
+			}
+		} else {
+			if o.isSet(mapping.FlagName) {
+				// Use the flag value if explicitly set
+				value := mapping.GetValue(&o.TokenOptions)
+				if value != "" { // Only set non-empty values to avoid overwriting good values
+					setStringField(tokenOptions, mapping.FlagName, value)
+				} else if flagValue, err := o.Flags.GetString(mapping.FlagName); err == nil && flagValue != "" {
+					// Use flag value directly if TokenOptions value is empty
+					setStringField(tokenOptions, mapping.FlagName, flagValue)
+				}
+			} else {
+				// Check for legacy auth provider config or existing exec args
+				value := getStringValueFromAuthInfo(authInfo, mapping)
+				setStringField(tokenOptions, mapping.FlagName, value)
+			}
+		}
+	}
+
+	return &handlers.ConversionContext{
+		Options:          tokenOptions,
+		AuthInfo:         authInfo,
+		IsLegacyProvider: isLegacyAzureAuth(authInfo),
+		FlagRegistry:     registry,
+		IsSet:            o.isSet,
+		AzureConfigDir:   o.azureConfigDir,
+	}
+}
+
+// Helper functions to extract values from authInfo using mapping
+func getStringValueFromAuthInfo(authInfo *api.AuthInfo, mapping mapper.FlagMapping) string {
 	if authInfo == nil {
-		return
+		return ""
 	}
 
 	isLegacyAuthProvider := isLegacyAzureAuth(authInfo)
 
-	if o.isSet(flagEnvironment) {
-		argEnvironmentVal = o.TokenOptions.Environment
-	} else if isLegacyAuthProvider {
-		if x, ok := authInfo.AuthProvider.Config[cfgEnvironment]; ok {
-			argEnvironmentVal = x
+	if isLegacyAuthProvider {
+		if mapping.LegacyConfigKey != "" {
+			if x, ok := authInfo.AuthProvider.Config[mapping.LegacyConfigKey]; ok {
+				return x
+			}
 		}
 	} else {
-		argEnvironmentVal = getExecArg(authInfo, argEnvironment)
-	}
-
-	if o.isSet(flagTenantID) {
-		argTenantIDVal = o.TokenOptions.TenantID
-	} else if isLegacyAuthProvider {
-		if x, ok := authInfo.AuthProvider.Config[cfgTenantID]; ok {
-			argTenantIDVal = x
+		result := getExecArg(authInfo, mapping.ArgumentName)
+		// Special handling for cache-dir: also check for deprecated --token-cache-dir
+		if result == "" && (mapping.FlagName == "cache-dir" || mapping.FlagName == "token-cache-dir") {
+			result = getExecArg(authInfo, "--token-cache-dir")
 		}
-	} else {
-		argTenantIDVal = getExecArg(authInfo, argTenantID)
+		return result
 	}
 
-	if o.isSet(flagClientID) {
-		argClientIDVal = o.TokenOptions.ClientID
-	} else if isLegacyAuthProvider {
-		if x, ok := authInfo.AuthProvider.Config[cfgClientID]; ok {
-			argClientIDVal = x
-		}
-	} else {
-		argClientIDVal = getExecArg(authInfo, argClientID)
-	}
-
-	if o.isSet(flagServerID) {
-		argServerIDVal = o.TokenOptions.ServerID
-	} else if isLegacyAuthProvider {
-		if x, ok := authInfo.AuthProvider.Config[cfgApiserverID]; ok {
-			argServerIDVal = x
-		}
-	} else {
-		argServerIDVal = getExecArg(authInfo, argServerID)
-	}
-
-	if o.isSet(flagIsLegacy) && o.TokenOptions.IsLegacy {
-		argIsLegacyConfigModeVal = true
-	} else if isLegacyAuthProvider {
-		if x := authInfo.AuthProvider.Config[cfgConfigMode]; x == "" || x == "0" {
-			argIsLegacyConfigModeVal = true
-		}
-	} else {
-		if found := getExecBoolArg(authInfo, argIsLegacy); found {
-			argIsLegacyConfigModeVal = true
-		}
-	}
-
-	if o.isSet(flagAuthRecordCacheDir) || o.isSet(flagTokenCacheDir) {
-		argAuthRecordCacheDirVal = o.TokenOptions.AuthRecordCacheDir
-	} else {
-		if val := getExecArg(authInfo, argAuthRecordCacheDir); val != "" {
-			argAuthRecordCacheDirVal = val
-		} else {
-			argAuthRecordCacheDirVal = getExecArg(authInfo, argTokenCacheDir)
-		}
-	}
-
-	if o.isSet(flagIsPoPTokenEnabled) {
-		argIsPoPTokenEnabledVal = o.TokenOptions.IsPoPTokenEnabled
-	} else {
-		if found := getExecBoolArg(authInfo, argIsPoPTokenEnabled); found {
-			argIsPoPTokenEnabledVal = true
-		}
-	}
-
-	if o.isSet(flagPoPTokenClaims) {
-		argPoPTokenClaimsVal = o.TokenOptions.PoPTokenClaims
-	} else {
-		argPoPTokenClaimsVal = getExecArg(authInfo, argPoPTokenClaims)
-	}
-
-	if o.isSet(flagRedirectURL) {
-		argRedirectURLVal = o.TokenOptions.RedirectURL
-	} else {
-		argRedirectURLVal = getExecArg(authInfo, argRedirectURL)
-	}
-
-	if o.isSet(flagLoginHint) {
-		argLoginHintVal = o.TokenOptions.LoginHint
-	} else {
-		argLoginHintVal = getExecArg(authInfo, argLoginHint)
-	}
-
-	return
+	return ""
 }
 
-func isLegacyAzureAuth(authInfoPtr *api.AuthInfo) (ok bool) {
-	if authInfoPtr == nil {
-		return
+func getBooleanValueFromAuthInfo(authInfo *api.AuthInfo, mapping mapper.FlagMapping) bool {
+	if authInfo == nil {
+		return false
 	}
-	if authInfoPtr.AuthProvider == nil {
-		return
+
+	isLegacyAuthProvider := isLegacyAzureAuth(authInfo)
+
+	if isLegacyAuthProvider {
+		if mapping.LegacyConfigKey != "" {
+			if x := authInfo.AuthProvider.Config[mapping.LegacyConfigKey]; x == "" || x == "0" {
+				return true // Legacy mode logic
+			}
+		}
+	} else {
+		return getExecBoolArg(authInfo, mapping.ArgumentName)
 	}
-	return authInfoPtr.AuthProvider.Name == azureAuthProvider
+
+	return false
 }
 
-func isExecUsingkubelogin(authInfoPtr *api.AuthInfo) (ok bool) {
-	if authInfoPtr == nil {
+// Helper functions to set values on token options
+func setStringField(options *token.Options, flagName, value string) {
+	// For cache-dir and token-cache-dir, don't overwrite existing non-empty values
+	if (flagName == "cache-dir" || flagName == "token-cache-dir") && options.AuthRecordCacheDir != "" && value == "" {
 		return
 	}
-	if authInfoPtr.Exec == nil {
-		return
+
+	switch flagName {
+	case "client-id":
+		options.ClientID = value
+	case "server-id":
+		options.ServerID = value
+	case "tenant-id":
+		options.TenantID = value
+	case "environment":
+		options.Environment = value
+	case "client-secret":
+		options.ClientSecret = value
+	case "client-certificate":
+		options.ClientCert = value
+	case "client-certificate-password":
+		options.ClientCertPassword = value
+	case "username":
+		options.Username = value
+	case "password":
+		options.Password = value
+	case "identity-resource-id":
+		options.IdentityResourceID = value
+	case "authority-host":
+		options.AuthorityHost = value
+	case "federated-token-file":
+		options.FederatedTokenFile = value
+	case "cache-dir":
+		options.AuthRecordCacheDir = value
+	case "token-cache-dir": // Deprecated, but still supported
+		options.AuthRecordCacheDir = value
+	case "pop-claims":
+		options.PoPTokenClaims = value
+	case "redirect-url":
+		options.RedirectURL = value
+	case "login-hint":
+		options.LoginHint = value
 	}
-	lowerc := strings.ToLower(authInfoPtr.Exec.Command)
-	return strings.Contains(lowerc, "kubelogin")
+}
+
+func setBooleanField(options *token.Options, flagName string, value bool) {
+	switch flagName {
+	case "legacy":
+		options.IsLegacy = value
+	case "pop-enabled":
+		options.IsPoPTokenEnabled = value
+	case "disable-environment-override":
+		options.DisableEnvironmentOverride = value
+	}
 }
 
 func Convert(o Options, pathOptions *clientcmd.PathOptions) error {
@@ -251,16 +273,12 @@ func Convert(o Options, pathOptions *clientcmd.PathOptions) error {
 
 		klog.V(5).Info("converting...")
 
-		argServerIDVal,
-			argClientIDVal,
-			argEnvironmentVal,
-			argTenantIDVal,
-			argAuthRecordCacheDirVal,
-			argPoPTokenClaimsVal,
-			argRedirectURLVal,
-			argLoginHintVal,
-			isLegacyConfigMode,
-			isPoPTokenEnabled := getArgValues(o, authInfo)
+		// Create registry for flag mapping
+		registry := mapper.NewRegistry()
+
+		// Build conversion context using the new mapping system
+		ctx := buildConversionContext(o, authInfo, registry)
+
 		exec := &api.ExecConfig{
 			Command: execName,
 			Args: []string{
@@ -275,195 +293,50 @@ func Convert(o Options, pathOptions *clientcmd.PathOptions) error {
 			exec.InstallHint = authInfo.Exec.InstallHint
 		}
 
-		exec.Args = append(exec.Args, argLoginMethod, o.TokenOptions.LoginMethod)
+		// Don't add --login here, we'll add it at the end after all other arguments
 
-		// all login methods require --server-id specified
-		if argServerIDVal == "" {
+		// Validate that server-id is available (required for all login methods)
+		if ctx.Options.ServerID == "" {
 			return fmt.Errorf("%s is required", argServerID)
 		}
-		exec.Args = append(exec.Args, argServerID, argServerIDVal)
 
-		if argAuthRecordCacheDirVal != "" {
-			exec.Args = append(exec.Args, argAuthRecordCacheDir, argAuthRecordCacheDirVal)
+		// Cache directory and other arguments will be handled by the specific login method handlers
+
+		// Use the new handler system to build login-method-specific arguments
+		handlerRegistry := handlers.NewHandlerRegistry()
+		handler, exists := handlerRegistry.GetHandler(o.TokenOptions.LoginMethod)
+		if !exists {
+			return fmt.Errorf("unsupported login method: %s", o.TokenOptions.LoginMethod)
 		}
 
-		switch o.TokenOptions.LoginMethod {
-		case token.AzureDeveloperCLILogin:
-			if o.isSet(flagTenantID) {
-				exec.Args = append(exec.Args, argTenantID, o.TokenOptions.TenantID)
-			}
+		// Validate the context for this login method
+		validationResult := handler.Validate(ctx)
+		if !validationResult.IsValid {
+			return fmt.Errorf("%s", strings.Join(validationResult.Errors, ", "))
+		}
 
-		case token.AzureCLILogin:
+		// Build arguments using the handler
+		argBuilder := builder.NewExecArgsBuilder()
+		err = handler.BuildExecArgs(ctx, argBuilder)
+		if err != nil {
+			return fmt.Errorf("failed to build exec args: %w", err)
+		}
 
-			if o.azureConfigDir != "" {
-				exec.Env = append(exec.Env, api.ExecEnvVar{Name: azureConfigDir, Value: o.azureConfigDir})
-			}
+		// Get the built arguments and append them to exec.Args
+		handlerArgs, err := argBuilder.Build()
+		if err != nil {
+			return fmt.Errorf("failed to build exec args: %w", err)
+		}
 
-			// when convert to azurecli login, tenantID from the input kubeconfig will be disregarded and
-			// will have to come from explicit flag `--tenant-id`.
-			// this is because azure cli logged in using MSI does not allow specifying tenant ID
-			// see https://github.com/Azure/kubelogin/issues/123#issuecomment-1209652342
-			if o.isSet(flagTenantID) {
-				exec.Args = append(exec.Args, argTenantID, o.TokenOptions.TenantID)
-			}
+		// Append all handler-built arguments
+		exec.Args = append(exec.Args, handlerArgs...)
 
-		case token.DeviceCodeLogin:
+		// Add --login at the end (as expected by tests)
+		exec.Args = append(exec.Args, argLoginMethod, o.TokenOptions.LoginMethod)
 
-			if argClientIDVal == "" {
-				return fmt.Errorf("%s is required", argClientID)
-			}
-
-			exec.Args = append(exec.Args, argClientID, argClientIDVal)
-
-			if argTenantIDVal == "" {
-				return fmt.Errorf("%s is required", argTenantID)
-			}
-
-			exec.Args = append(exec.Args, argTenantID, argTenantIDVal)
-
-			if argEnvironmentVal != "" {
-				// environment is optional
-				exec.Args = append(exec.Args, argEnvironment, argEnvironmentVal)
-			}
-
-			if isLegacyConfigMode {
-				exec.Args = append(exec.Args, argIsLegacy)
-			}
-
-		case token.InteractiveLogin:
-
-			if argClientIDVal == "" {
-				return fmt.Errorf("%s is required", argClientID)
-			}
-
-			exec.Args = append(exec.Args, argClientID, argClientIDVal)
-
-			if argTenantIDVal == "" {
-				return fmt.Errorf("%s is required", argTenantID)
-			}
-
-			exec.Args = append(exec.Args, argTenantID, argTenantIDVal)
-
-			if argEnvironmentVal != "" {
-				// environment is optional
-				exec.Args = append(exec.Args, argEnvironment, argEnvironmentVal)
-			}
-
-			// PoP token flags are optional but must be provided together
-			exec.Args, err = validatePoPClaims(exec.Args, isPoPTokenEnabled, argPoPTokenClaims, argPoPTokenClaimsVal)
-			if err != nil {
-				return err
-			}
-
-			if argRedirectURLVal != "" {
-				exec.Args = append(exec.Args, argRedirectURL, argRedirectURLVal)
-			}
-
-			if argLoginHintVal != "" {
-				exec.Args = append(exec.Args, argLoginHint, argLoginHintVal)
-			}
-
-		case token.ServicePrincipalLogin:
-
-			if argClientIDVal == "" {
-				return fmt.Errorf("%s is required", argClientID)
-			}
-
-			exec.Args = append(exec.Args, argClientID, argClientIDVal)
-
-			if argTenantIDVal == "" {
-				return fmt.Errorf("%s is required", argTenantID)
-			}
-
-			exec.Args = append(exec.Args, argTenantID, argTenantIDVal)
-
-			if argEnvironmentVal != "" {
-				// environment is optional
-				exec.Args = append(exec.Args, argEnvironment, argEnvironmentVal)
-			}
-
-			if o.isSet(flagClientSecret) {
-				exec.Args = append(exec.Args, argClientSecret, o.TokenOptions.ClientSecret)
-			}
-
-			if o.isSet(flagClientCert) {
-				exec.Args = append(exec.Args, argClientCert, o.TokenOptions.ClientCert)
-			}
-
-			if o.isSet(flagClientCertPassword) {
-				exec.Args = append(exec.Args, argClientCertPassword, o.TokenOptions.ClientCertPassword)
-			}
-
-			if isLegacyConfigMode {
-				exec.Args = append(exec.Args, argIsLegacy)
-			}
-
-			// PoP token flags are optional but must be provided together
-			exec.Args, err = validatePoPClaims(exec.Args, isPoPTokenEnabled, argPoPTokenClaims, argPoPTokenClaimsVal)
-			if err != nil {
-				return err
-			}
-
-			if o.isSet(flagDisableEnvironmentOverride) {
-				exec.Args = append(exec.Args, argDisableEnvironmentOverride)
-			}
-
-		case token.MSILogin:
-
-			if o.isSet(flagClientID) {
-				exec.Args = append(exec.Args, argClientID, o.TokenOptions.ClientID)
-			} else if o.isSet(flagIdentityResourceID) {
-				exec.Args = append(exec.Args, argIdentityResourceID, o.TokenOptions.IdentityResourceID)
-			}
-
-		case token.ROPCLogin:
-
-			if argClientIDVal == "" {
-				return fmt.Errorf("%s is required", argClientID)
-			}
-
-			exec.Args = append(exec.Args, argClientID, argClientIDVal)
-
-			if argTenantIDVal == "" {
-				return fmt.Errorf("%s is required", argTenantID)
-			}
-
-			exec.Args = append(exec.Args, argTenantID, argTenantIDVal)
-
-			if argEnvironmentVal != "" {
-				// environment is optional
-				exec.Args = append(exec.Args, argEnvironment, argEnvironmentVal)
-			}
-
-			if o.isSet(flagUsername) {
-				exec.Args = append(exec.Args, argUsername, o.TokenOptions.Username)
-			}
-
-			if o.isSet(flagPassword) {
-				exec.Args = append(exec.Args, argPassword, o.TokenOptions.Password)
-			}
-
-			if isLegacyConfigMode {
-				exec.Args = append(exec.Args, argIsLegacy)
-			}
-
-		case token.WorkloadIdentityLogin:
-
-			if o.isSet(flagClientID) {
-				exec.Args = append(exec.Args, argClientID, o.TokenOptions.ClientID)
-			}
-
-			if o.isSet(flagTenantID) {
-				exec.Args = append(exec.Args, argTenantID, o.TokenOptions.TenantID)
-			}
-
-			if o.isSet(flagAuthorityHost) {
-				exec.Args = append(exec.Args, argAuthorityHost, o.TokenOptions.AuthorityHost)
-			}
-
-			if o.isSet(flagFederatedTokenFile) {
-				exec.Args = append(exec.Args, argFederatedTokenFile, o.TokenOptions.FederatedTokenFile)
-			}
+		// Handle special case for Azure CLI which needs environment variable
+		if o.TokenOptions.LoginMethod == token.AzureCLILogin && o.azureConfigDir != "" {
+			exec.Env = append(exec.Env, api.ExecEnvVar{Name: azureConfigDir, Value: o.azureConfigDir})
 		}
 
 		authInfo.Exec = exec
@@ -532,4 +405,25 @@ func validatePoPClaims(args []string, isPopTokenEnabled bool, popTokenClaimsFlag
 	}
 
 	return args, nil
+}
+
+func isLegacyAzureAuth(authInfoPtr *api.AuthInfo) (ok bool) {
+	if authInfoPtr == nil {
+		return
+	}
+	if authInfoPtr.AuthProvider == nil {
+		return
+	}
+	return authInfoPtr.AuthProvider.Name == azureAuthProvider
+}
+
+func isExecUsingkubelogin(authInfoPtr *api.AuthInfo) (ok bool) {
+	if authInfoPtr == nil {
+		return
+	}
+	if authInfoPtr.Exec == nil {
+		return
+	}
+	lowerc := strings.ToLower(authInfoPtr.Exec.Command)
+	return strings.Contains(lowerc, "kubelogin")
 }

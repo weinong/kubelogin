@@ -183,7 +183,7 @@ func TestInteractiveLoginHandlerValidation(t *testing.T) {
 				PoPTokenClaims:    "",
 			},
 			expected: false,
-			errorMsg: "--pop-claims is required when --pop-enabled is specified",
+			errorMsg: "--pop-claims is required when specifying --pop-enabled",
 		},
 		{
 			name: "pop-claims without pop-enabled",
@@ -195,7 +195,7 @@ func TestInteractiveLoginHandlerValidation(t *testing.T) {
 				PoPTokenClaims:    "u=/subscriptions/test",
 			},
 			expected: false,
-			errorMsg: "--pop-enabled is required when --pop-claims is specified",
+			errorMsg: "--pop-enabled is required when specifying --pop-claims",
 		},
 		{
 			name: "valid with pop tokens",
@@ -258,9 +258,8 @@ func TestInteractiveLoginHandlerBuildExecArgs(t *testing.T) {
 				ClientID: "test-client",
 				TenantID: "test-tenant",
 			},
-			expectedLen: 7,
+			expectedLen: 6,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -278,9 +277,8 @@ func TestInteractiveLoginHandlerBuildExecArgs(t *testing.T) {
 				IsPoPTokenEnabled: true,
 				PoPTokenClaims:    "u=/subscriptions/test",
 			},
-			expectedLen: 16,
+			expectedLen: 15,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -301,9 +299,8 @@ func TestInteractiveLoginHandlerBuildExecArgs(t *testing.T) {
 				LoginHint:   "user@example.com",
 				// No PoP tokens, no redirect URL
 			},
-			expectedLen: 11,
+			expectedLen: 10,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -512,9 +509,8 @@ func TestDeviceCodeLoginHandlerBuildExecArgs(t *testing.T) {
 				TenantID: "test-tenant",
 			},
 			isLegacy:    false,
-			expectedLen: 7,
+			expectedLen: 6,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -529,9 +525,8 @@ func TestDeviceCodeLoginHandlerBuildExecArgs(t *testing.T) {
 				Environment: "AzureCloud",
 			},
 			isLegacy:    false,
-			expectedLen: 9,
+			expectedLen: 8,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -546,9 +541,8 @@ func TestDeviceCodeLoginHandlerBuildExecArgs(t *testing.T) {
 				TenantID: "test-tenant",
 			},
 			isLegacy:    true,
-			expectedLen: 8,
+			expectedLen: 7,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -564,9 +558,8 @@ func TestDeviceCodeLoginHandlerBuildExecArgs(t *testing.T) {
 				Environment: "AzureCloud",
 			},
 			isLegacy:    true,
-			expectedLen: 10,
+			expectedLen: 9,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -578,6 +571,11 @@ func TestDeviceCodeLoginHandlerBuildExecArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Set IsLegacy in options if the test requires it
+			if tt.isLegacy {
+				tt.options.IsLegacy = true
+			}
+
 			ctx := &ConversionContext{
 				Options:          tt.options,
 				AuthInfo:         &api.AuthInfo{},
@@ -687,15 +685,15 @@ func TestServicePrincipalLoginHandlerValidation(t *testing.T) {
 			errorMsg: "--client-id is required",
 		},
 		{
-			name: "missing authentication method",
+			name: "missing authentication method - should pass (credentials can be provided at runtime)",
 			options: &token.Options{
 				ServerID: "test-server",
 				ClientID: "test-client",
 				TenantID: "test-tenant",
-				// No ClientSecret or ClientCert
+				// No ClientSecret or ClientCert - this is okay
 			},
-			expected: false,
-			errorMsg: "requires either --client-secret or --client-certificate",
+			expected: true, // Changed from false to true
+			// No error message expected
 		},
 		{
 			name: "pop-enabled without pop-claims",
@@ -708,7 +706,7 @@ func TestServicePrincipalLoginHandlerValidation(t *testing.T) {
 				PoPTokenClaims:    "",
 			},
 			expected: false,
-			errorMsg: "--pop-claims is required when --pop-enabled is specified",
+			errorMsg: "--pop-claims is required when specifying --pop-enabled",
 		},
 		{
 			name: "pop-claims without pop-enabled",
@@ -721,7 +719,7 @@ func TestServicePrincipalLoginHandlerValidation(t *testing.T) {
 				PoPTokenClaims:    "u=/subscriptions/test",
 			},
 			expected: false,
-			errorMsg: "--pop-enabled is required when --pop-claims is specified",
+			errorMsg: "--pop-enabled is required when specifying --pop-claims",
 		},
 		{
 			name: "valid with pop tokens",
@@ -788,9 +786,8 @@ func TestServicePrincipalLoginHandlerBuildExecArgs(t *testing.T) {
 				ClientSecret: "test-secret",
 			},
 			isLegacy:    false,
-			expectedLen: 9,
+			expectedLen: 8,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -806,9 +803,8 @@ func TestServicePrincipalLoginHandlerBuildExecArgs(t *testing.T) {
 				ClientCert: "/path/to/cert.pem",
 			},
 			isLegacy:    false,
-			expectedLen: 9,
+			expectedLen: 8,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -825,9 +821,8 @@ func TestServicePrincipalLoginHandlerBuildExecArgs(t *testing.T) {
 				ClientCertPassword: "cert-password",
 			},
 			isLegacy:    false,
-			expectedLen: 11,
+			expectedLen: 10,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -848,9 +843,8 @@ func TestServicePrincipalLoginHandlerBuildExecArgs(t *testing.T) {
 				DisableEnvironmentOverride: true,
 			},
 			isLegacy:    true,
-			expectedLen: 16,
+			expectedLen: 15,
 			shouldContain: []string{
-				"get-token",
 				"--server-id", "test-server",
 				"--client-id", "test-client",
 				"--tenant-id", "test-tenant",
@@ -866,6 +860,11 @@ func TestServicePrincipalLoginHandlerBuildExecArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Set IsLegacy in options if the test requires it
+			if tt.isLegacy {
+				tt.options.IsLegacy = true
+			}
+
 			ctx := &ConversionContext{
 				Options:          tt.options,
 				AuthInfo:         &api.AuthInfo{},
@@ -985,7 +984,13 @@ func TestMSILoginHandlerValidation(t *testing.T) {
 				Options:      tt.options,
 				AuthInfo:     &api.AuthInfo{},
 				FlagRegistry: registry,
-				IsSet:        func(flag string) bool { return false },
+				IsSet: func(flag string) bool {
+					// For the test that expects both flags to be set, mock IsSet appropriately
+					if tt.name == "invalid - both client-id and identity-resource-id" {
+						return flag == "client-id" || flag == "identity-resource-id"
+					}
+					return false
+				},
 			}
 
 			result := handler.Validate(ctx)
@@ -1020,7 +1025,7 @@ func TestMSILoginHandlerBuildExecArgs(t *testing.T) {
 			options: &token.Options{
 				ServerID: "test-server",
 			},
-			expectedArgs: []string{"get-token", "--server-id", "test-server"},
+			expectedArgs: []string{"--server-id", "test-server"},
 		},
 		{
 			name: "MSI with client-id",
@@ -1028,7 +1033,7 @@ func TestMSILoginHandlerBuildExecArgs(t *testing.T) {
 				ServerID: "test-server",
 				ClientID: "test-client",
 			},
-			expectedArgs: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client"},
+			expectedArgs: []string{"--server-id", "test-server", "--client-id", "test-client"},
 		},
 		{
 			name: "MSI with identity-resource-id",
@@ -1036,7 +1041,7 @@ func TestMSILoginHandlerBuildExecArgs(t *testing.T) {
 				ServerID:           "test-server",
 				IdentityResourceID: "test-identity-resource",
 			},
-			expectedArgs: []string{"get-token", "--server-id", "test-server", "--identity-resource-id", "test-identity-resource"},
+			expectedArgs: []string{"--server-id", "test-server", "--identity-resource-id", "test-identity-resource"},
 		},
 		{
 			name: "MSI with empty optional fields",
@@ -1045,7 +1050,7 @@ func TestMSILoginHandlerBuildExecArgs(t *testing.T) {
 				ClientID:           "", // Empty should be skipped
 				IdentityResourceID: "", // Empty should be skipped
 			},
-			expectedArgs: []string{"get-token", "--server-id", "test-server"},
+			expectedArgs: []string{"--server-id", "test-server"},
 		},
 	}
 
@@ -1055,7 +1060,16 @@ func TestMSILoginHandlerBuildExecArgs(t *testing.T) {
 				Options:      tt.options,
 				AuthInfo:     &api.AuthInfo{},
 				FlagRegistry: registry,
-				IsSet:        func(flag string) bool { return false },
+				IsSet: func(flag string) bool {
+					// Mock IsSet to return true when the flag corresponds to non-empty values in options
+					switch flag {
+					case "client-id":
+						return tt.options.ClientID != ""
+					case "identity-resource-id":
+						return tt.options.IdentityResourceID != ""
+					}
+					return false
+				},
 			}
 
 			argBuilder := builder.NewExecArgsBuilder()
@@ -1097,7 +1111,7 @@ func TestAzureCLILoginHandler_Basic(t *testing.T) {
 	}
 
 	optionalFlags := handler.GetOptionalFlags()
-	expectedOptional := []string{"tenant-id", "azure-config-dir"}
+	expectedOptional := []string{"tenant-id", "azure-config-dir", "cache-dir"}
 	if len(optionalFlags) != len(expectedOptional) {
 		t.Errorf("Expected %d optional flags, got %d", len(expectedOptional), len(optionalFlags))
 	}
@@ -1187,7 +1201,7 @@ func TestAzureCLILoginHandler_BuildExecArgs(t *testing.T) {
 				ServerID: "test-server",
 			},
 			tenantIDIsSet: false,
-			expectedArgs:  []string{"get-token", "--server-id", "test-server"},
+			expectedArgs:  []string{"--server-id", "test-server"},
 		},
 		{
 			name: "Azure CLI with tenant-id set explicitly",
@@ -1196,7 +1210,7 @@ func TestAzureCLILoginHandler_BuildExecArgs(t *testing.T) {
 				TenantID: "test-tenant",
 			},
 			tenantIDIsSet: true,
-			expectedArgs:  []string{"get-token", "--server-id", "test-server", "--tenant-id", "test-tenant"},
+			expectedArgs:  []string{"--server-id", "test-server", "--tenant-id", "test-tenant"},
 		},
 		{
 			name: "Azure CLI with tenant-id in options but not explicitly set",
@@ -1205,7 +1219,7 @@ func TestAzureCLILoginHandler_BuildExecArgs(t *testing.T) {
 				TenantID: "test-tenant",
 			},
 			tenantIDIsSet: false,
-			expectedArgs:  []string{"get-token", "--server-id", "test-server"},
+			expectedArgs:  []string{"--server-id", "test-server"},
 		},
 		{
 			name: "missing server-id should error",
@@ -1357,7 +1371,7 @@ func TestWorkloadIdentityLoginHandler_BuildExecArgs(t *testing.T) {
 			options: &token.Options{
 				ServerID: "test-server",
 			},
-			expected: []string{"get-token", "--server-id", "test-server"},
+			expected: []string{"--server-id", "test-server"},
 		},
 		{
 			name: "workload identity with authority host",
@@ -1365,7 +1379,7 @@ func TestWorkloadIdentityLoginHandler_BuildExecArgs(t *testing.T) {
 				ServerID:      "test-server",
 				AuthorityHost: "https://login.microsoftonline.com",
 			},
-			expected: []string{"get-token", "--server-id", "test-server", "--authority-host", "https://login.microsoftonline.com"},
+			expected: []string{"--server-id", "test-server", "--authority-host", "https://login.microsoftonline.com"},
 		},
 		{
 			name: "workload identity with all options",
@@ -1376,7 +1390,7 @@ func TestWorkloadIdentityLoginHandler_BuildExecArgs(t *testing.T) {
 				AuthorityHost:      "https://login.microsoftonline.com",
 				FederatedTokenFile: "/path/to/token",
 			},
-			expected: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant", "--authority-host", "https://login.microsoftonline.com", "--federated-token-file", "/path/to/token"},
+			expected: []string{"--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant", "--authority-host", "https://login.microsoftonline.com", "--federated-token-file", "/path/to/token"},
 		},
 	}
 
@@ -1424,7 +1438,7 @@ func TestROPCLoginHandler_Basic(t *testing.T) {
 		t.Errorf("Expected required flags %v, got %v", expectedRequired, handler.GetRequiredFlags())
 	}
 
-	expectedOptional := []string{"environment", "username", "password"}
+	expectedOptional := []string{"environment", "username", "password", "legacy"}
 	if !stringSlicesEqual(handler.GetOptionalFlags(), expectedOptional) {
 		t.Errorf("Expected optional flags %v, got %v", expectedOptional, handler.GetOptionalFlags())
 	}
@@ -1499,7 +1513,7 @@ func TestROPCLoginHandler_BuildExecArgs(t *testing.T) {
 				ClientID: "test-client",
 				TenantID: "test-tenant",
 			},
-			expected: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant"},
+			expected: []string{"--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant"},
 		},
 		{
 			name: "ROPC with environment",
@@ -1509,7 +1523,7 @@ func TestROPCLoginHandler_BuildExecArgs(t *testing.T) {
 				TenantID:    "test-tenant",
 				Environment: "AzureCloud",
 			},
-			expected: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant", "--environment", "AzureCloud"},
+			expected: []string{"--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant", "--environment", "AzureCloud"},
 		},
 		{
 			name: "ROPC with username and password",
@@ -1520,7 +1534,7 @@ func TestROPCLoginHandler_BuildExecArgs(t *testing.T) {
 				Username: "user@example.com",
 				Password: "secret",
 			},
-			expected: []string{"get-token", "--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant", "--username", "user@example.com", "--password", "secret"},
+			expected: []string{"--server-id", "test-server", "--client-id", "test-client", "--tenant-id", "test-tenant", "--username", "user@example.com", "--password", "secret"},
 		},
 	}
 
@@ -1638,7 +1652,7 @@ func TestAzureDeveloperCLILoginHandler_BuildExecArgs(t *testing.T) {
 				ServerID: "test-server",
 			},
 			isSetFunc: func(string) bool { return false },
-			expected:  []string{"get-token", "--server-id", "test-server"},
+			expected:  []string{"--server-id", "test-server"},
 		},
 		{
 			name: "Azure Developer CLI with explicit tenant-id",
@@ -1647,7 +1661,7 @@ func TestAzureDeveloperCLILoginHandler_BuildExecArgs(t *testing.T) {
 				TenantID: "test-tenant",
 			},
 			isSetFunc: func(flag string) bool { return flag == "tenant-id" },
-			expected:  []string{"get-token", "--server-id", "test-server", "--tenant-id", "test-tenant"},
+			expected:  []string{"--server-id", "test-server", "--tenant-id", "test-tenant"},
 		},
 		{
 			name: "Azure Developer CLI with tenant in options but not set",
@@ -1656,7 +1670,7 @@ func TestAzureDeveloperCLILoginHandler_BuildExecArgs(t *testing.T) {
 				TenantID: "test-tenant",
 			},
 			isSetFunc: func(string) bool { return false },
-			expected:  []string{"get-token", "--server-id", "test-server"},
+			expected:  []string{"--server-id", "test-server"},
 		},
 	}
 

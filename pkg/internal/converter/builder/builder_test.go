@@ -17,8 +17,8 @@ func TestNewExecArgsBuilder(t *testing.T) {
 		t.Fatalf("New builder should not have errors: %v", err)
 	}
 
-	if len(args) != 1 || args[0] != "get-token" {
-		t.Errorf("Expected [\"get-token\"], got %v", args)
+	if len(args) != 0 {
+		t.Errorf("Expected [], got %v", args)
 	}
 }
 
@@ -35,7 +35,7 @@ func TestAddRequiredArgument(t *testing.T) {
 			flag:         "--client-id",
 			value:        "test-client",
 			expectError:  false,
-			expectedArgs: []string{"get-token", "--client-id", "test-client"},
+			expectedArgs: []string{"--client-id", "test-client"},
 		},
 		{
 			name:        "empty required argument",
@@ -87,13 +87,13 @@ func TestAddOptionalArgument(t *testing.T) {
 			name:         "non-empty optional argument",
 			flag:         "--environment",
 			value:        "AzureCloud",
-			expectedArgs: []string{"get-token", "--environment", "AzureCloud"},
+			expectedArgs: []string{"--environment", "AzureCloud"},
 		},
 		{
 			name:         "empty optional argument",
 			flag:         "--environment",
 			value:        "",
-			expectedArgs: []string{"get-token"},
+			expectedArgs: []string{},
 		},
 	}
 
@@ -131,13 +131,13 @@ func TestAddFlag(t *testing.T) {
 			name:         "flag with true condition",
 			flag:         "--legacy",
 			condition:    true,
-			expectedArgs: []string{"get-token", "--legacy"},
+			expectedArgs: []string{"--legacy"},
 		},
 		{
 			name:         "flag with false condition",
 			flag:         "--legacy",
 			condition:    false,
-			expectedArgs: []string{"get-token"},
+			expectedArgs: []string{},
 		},
 	}
 
@@ -179,7 +179,6 @@ func TestFluentInterface(t *testing.T) {
 	}
 
 	expected := []string{
-		"get-token",
 		"--server-id", "test-server",
 		"--client-id", "test-client",
 		"--environment", "AzureCloud",
@@ -203,7 +202,7 @@ func TestMustBuild(t *testing.T) {
 		builder.AddOptionalArgument("--test", "value")
 
 		args := builder.MustBuild()
-		if len(args) != 3 || args[0] != "get-token" || args[1] != "--test" || args[2] != "value" {
+		if len(args) != 2 || args[0] != "--test" || args[1] != "value" {
 			t.Errorf("Unexpected args: %v", args)
 		}
 	})
@@ -236,7 +235,6 @@ func TestConvenienceBuilders(t *testing.T) {
 		}
 
 		expected := []string{
-			"get-token",
 			"--server-id", "server-123",
 			"--client-id", "client-456",
 			"--tenant-id", "tenant-789",
@@ -266,7 +264,6 @@ func TestConvenienceBuilders(t *testing.T) {
 		}
 
 		expected := []string{
-			"get-token",
 			"--redirect-url", "http://localhost:8080",
 			"--login-hint", "user@example.com",
 		}
@@ -383,8 +380,8 @@ func TestCloneAndReset(t *testing.T) {
 
 	// Test reset
 	original.Reset()
-	if original.Length() != 1 {
-		t.Errorf("Reset should leave only get-token command")
+	if original.Length() != 0 {
+		t.Errorf("Reset should leave empty args")
 	}
 	if original.HasErrors() {
 		t.Error("Reset should clear errors")

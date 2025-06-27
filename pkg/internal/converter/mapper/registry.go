@@ -186,6 +186,14 @@ func defaultMappings() []FlagMapping {
 			ApplicableLogins: []string{}, // Applies to all
 		},
 		{
+			FlagName:         "token-cache-dir", // Deprecated, but still supported
+			ArgumentName:     "--cache-dir",     // Maps to the same argument
+			GetValue:         func(opts *token.Options) string { return opts.AuthRecordCacheDir },
+			LegacyConfigKey:  "",
+			IsRequired:       false,
+			ApplicableLogins: []string{}, // Applies to all
+		},
+		{
 			FlagName:        "pop-claims",
 			ArgumentName:    "--pop-claims",
 			GetValue:        func(opts *token.Options) string { return opts.PoPTokenClaims },
@@ -243,6 +251,11 @@ func (r *Registry) GetMappingsForLogin(loginMethod string) []FlagMapping {
 		}
 	}
 	return result
+}
+
+// GetAllMappings returns all flag mappings in the registry
+func (r *Registry) GetAllMappings() []FlagMapping {
+	return r.mappings
 }
 
 // GetMapping returns the mapping for a specific flag name
