@@ -183,6 +183,68 @@ type Registry struct {
 - `pkg/internal/converter/mapper/registry.go` - Enhanced existing registry
 - `pkg/internal/converter/mapper/registry_test.go` - Comprehensive test suite
 
+### Task 3.3: Argument Builder with Fluent Interface ✅
+
+**Implementation**: Enhanced the existing argument builder in `pkg/internal/converter/builder/` with comprehensive error handling and convenience methods.
+
+**Key Features**:
+
+```go
+type ExecArgsBuilder struct {
+    args   []string
+    errors []error  // Added error tracking
+}
+
+// Core methods
+func (b *ExecArgsBuilder) AddRequiredArgument(flag, value string) *ExecArgsBuilder
+func (b *ExecArgsBuilder) AddOptionalArgument(flag, value string) *ExecArgsBuilder
+func (b *ExecArgsBuilder) AddFlag(flag string, condition bool) *ExecArgsBuilder
+func (b *ExecArgsBuilder) Build() ([]string, error)
+func (b *ExecArgsBuilder) MustBuild() []string
+```
+
+**Error Handling**:
+- **Validation Errors**: Accumulated during construction, not at build time
+- **Early Error Detection**: Required arguments validated when added
+- **Graceful Degradation**: Optional arguments skip empty values without errors
+- **Multiple Error Support**: Combines multiple validation errors into readable messages
+
+**Convenience Builders**: Login-method-specific argument groups for common patterns:
+- `RequiredAuthArgs` - Standard authentication (server-id, client-id, tenant-id)
+- `InteractiveArgs` - Interactive login (redirect-url, login-hint)
+- `ServicePrincipalArgs` - SPN authentication (client-secret, client-certificate, etc.)
+- `PoPTokenArgs` - PoP token with cross-validation (pop-enabled + pop-claims)
+- `ROPCArgs` - Username/password authentication
+- `WorkloadIdentityArgs` - Workload identity (authority-host, federated-token-file)
+- `MSIArgs` - Managed Service Identity (identity-resource-id)
+
+**Key Improvements Over Manual Construction**:
+- **Type Safety**: Impossible to create malformed argument pairs
+- **Validation**: Required arguments validated at construction time
+- **Fluent Interface**: Method chaining for readable code
+- **Error Accumulation**: All validation errors collected before failing
+- **Cross-validation**: PoP token arguments validated together
+- **Comprehensive Testing**: 10 test functions covering all scenarios
+
+**Usage Example**:
+```go
+args, err := NewExecArgsBuilder().
+    AddRequiredAuthArgs(RequiredAuthArgs{
+        ServerID: "server-123",
+        ClientID: "client-456", 
+        TenantID: "tenant-789",
+    }).
+    AddInteractiveArgs(InteractiveArgs{
+        LoginHint: "user@example.com",
+        RedirectURL: "http://localhost:8080",
+    }).
+    Build()
+```
+
+**Files Enhanced**:
+- `pkg/internal/converter/builder/builder.go` - Enhanced with error handling and convenience methods
+- `pkg/internal/converter/builder/builder_test.go` - Comprehensive test suite (10 test functions)
+
 ## Changes Made
 
 *To be filled during implementation*
@@ -219,7 +281,7 @@ type Registry struct {
 ### Phase 3: Implement Core Infrastructure
 - [x] Task 3.1: Implement RawOptions → Validate() → Complete() pattern for converter options
 - [x] Task 3.2: Implement flag registry and mapping system
-- [ ] Task 3.3: Implement argument builder with fluent interface
+- [x] Task 3.3: Implement argument builder with fluent interface
 - [ ] Task 3.4: Implement login method handler interface and base functionality
 
 ### Phase 4: Implement Login Method Handlers
