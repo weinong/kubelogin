@@ -188,21 +188,20 @@ func NewDeviceCodeLoginHandler() *DeviceCodeLoginHandler {
 	}
 }
 
-// BuildExecArgs builds exec arguments for device code login
-func (h *DeviceCodeLoginHandler) BuildExecArgs(ctx *ConversionContext, builder *builder.ExecArgsBuilder) error {
-	mappings := ctx.FlagRegistry.GetMappingsForLogin(token.DeviceCodeLogin)
+// BuildExecArgs builds exec arguments for device code login using convenience builders
+func (h *DeviceCodeLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+	// Add required authentication arguments
+	argBuilder.AddRequiredAuthArgs(builder.RequiredAuthArgs{
+		ServerID: ctx.Options.ServerID,
+		ClientID: ctx.Options.ClientID,
+		TenantID: ctx.Options.TenantID,
+	})
 
-	for _, mapping := range mappings {
-		if mapping.IsBoolean {
-			value := mapping.GetBoolValue(ctx.Options)
-			builder.AddFlag(mapping.ArgumentName, value)
-		} else {
-			value := mapping.GetValue(ctx.Options)
-			if mapping.IsRequired || value != "" {
-				builder.AddOptionalArgument(mapping.ArgumentName, value)
-			}
-		}
-	}
+	// Add optional environment
+	argBuilder.AddOptionalArgument("--environment", ctx.Options.Environment)
+
+	// Add legacy flag if needed
+	argBuilder.AddFlag("--legacy", ctx.IsLegacyProvider)
 
 	return nil
 }

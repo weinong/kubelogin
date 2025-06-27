@@ -441,6 +441,94 @@ get-token --server-id test-server --client-id test-client --tenant-id test-tenan
 - Implements validation patterns from the CLI flags specification
 - Maintains backward compatibility with existing exec argument format
 
+### Task 4.2: Implement DeviceCodeLoginHandler ✅
+
+**Implementation**: Enhanced the DeviceCodeLoginHandler with sophisticated argument building using the convenience builders from Task 3.3, following the same pattern as the InteractiveLoginHandler.
+
+**Key Enhancements**:
+
+1. **Clean Argument Building**:
+   - **Required Auth Args**: Uses `RequiredAuthArgs` convenience builder for server-id, client-id, tenant-id
+   - **Optional Environment**: Proper handling of optional environment parameter
+   - **Legacy Support**: Correct implementation of legacy flag based on context
+
+2. **Simplified Implementation**:
+   - **Type Safety**: Uses type-safe builders instead of generic mapping loops
+   - **Readable Code**: Clear, maintainable implementation using fluent interface
+   - **No Special Validation**: Device code login doesn't require cross-field validation like interactive login
+
+3. **Comprehensive Flag Support**:
+   - **Required Flags**: `server-id`, `client-id`, `tenant-id`
+   - **Optional Environment**: `environment`
+   - **Legacy Support**: `legacy` flag based on provider context
+
+**Enhanced Argument Building**:
+```go
+func (h *DeviceCodeLoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+    // Required authentication arguments
+    argBuilder.AddRequiredAuthArgs(builder.RequiredAuthArgs{
+        ServerID: ctx.Options.ServerID,
+        ClientID: ctx.Options.ClientID,
+        TenantID: ctx.Options.TenantID,
+    })
+
+    // Optional environment
+    argBuilder.AddOptionalArgument("--environment", ctx.Options.Environment)
+
+    // Legacy flag if needed
+    argBuilder.AddFlag("--legacy", ctx.IsLegacyProvider)
+
+    return nil
+}
+```
+
+**Key Improvements Over Generic Implementation**:
+- **Targeted Logic**: Uses specific convenience builders instead of generic mapping loops
+- **Cleaner Code**: More readable and maintainable than the original switch statement approach
+- **Type Safety**: Impossible to create malformed argument combinations
+- **Consistent Pattern**: Follows the same enhancement pattern as InteractiveLoginHandler
+
+**Argument Generation Examples**:
+
+*Minimal Device Code Login*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant
+```
+
+*Device Code Login with Environment*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant \
+  --environment AzureCloud
+```
+
+*Device Code Login with Legacy Flag*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant \
+  --legacy
+```
+
+*Device Code Login with All Options*:
+```bash
+get-token --server-id test-server --client-id test-client --tenant-id test-tenant \
+  --environment AzureCloud --legacy
+```
+
+**Testing Coverage**:
+- **Basic Functionality**: Handler creation, name, required/optional flags
+- **Validation Scenarios**: Valid options, missing required fields (client-id, tenant-id)
+- **Argument Building**: Minimal, with environment, with legacy flag, and all options scenarios
+- **Legacy Support**: Proper handling of legacy provider context
+
+**Files Enhanced**:
+- `pkg/internal/converter/handlers/handlers.go` - Enhanced DeviceCodeLoginHandler implementation
+- `pkg/internal/converter/handlers/handlers_test.go` - Added 3 comprehensive test functions
+
+**Standards Compliance**:
+- Follows the LoginMethodHandler interface exactly
+- Uses convenience builders from Task 3.3 architecture
+- Implements base validation from BaseHandler (no special validation needed)
+- Maintains backward compatibility with existing exec argument format
+
 ## Changes Made
 
 *To be filled during implementation*
@@ -482,7 +570,7 @@ get-token --server-id test-server --client-id test-client --tenant-id test-tenan
 
 ### Phase 4: Implement Login Method Handlers
 - [x] Task 4.1: Implement InteractiveLoginHandler with proper flag handling
-- [ ] Task 4.2: Implement DeviceCodeLoginHandler
+- [x] Task 4.2: Implement DeviceCodeLoginHandler
 - [ ] Task 4.3: Implement ServicePrincipalLoginHandler  
 - [ ] Task 4.4: Implement MSILoginHandler
 - [ ] Task 4.5: Implement AzureCLILoginHandler

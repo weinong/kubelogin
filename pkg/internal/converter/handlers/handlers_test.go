@@ -415,6 +415,215 @@ func TestDeviceCodeLoginHandler(t *testing.T) {
 	if len(requiredFlags) != len(expectedRequired) {
 		t.Errorf("Expected %d required flags, got %d", len(expectedRequired), len(requiredFlags))
 	}
+
+	// Test that optional flags include environment and legacy
+	optionalFlags := handler.GetOptionalFlags()
+	expectedOptional := []string{"environment", "legacy"}
+	if len(optionalFlags) != len(expectedOptional) {
+		t.Errorf("Expected %d optional flags, got %d", len(expectedOptional), len(optionalFlags))
+	}
+}
+
+func TestDeviceCodeLoginHandlerValidation(t *testing.T) {
+	handler := NewDeviceCodeLoginHandler()
+	registry := mapper.NewRegistry()
+
+	tests := []struct {
+		name     string
+		options  *token.Options
+		expected bool
+		errorMsg string
+	}{
+		{
+			name: "valid options",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				TenantID: "test-tenant",
+			},
+			expected: true,
+		},
+		{
+			name: "missing client-id",
+			options: &token.Options{
+				ServerID: "test-server",
+				// ClientID missing
+				TenantID: "test-tenant",
+			},
+			expected: false,
+			errorMsg: "--client-id is required",
+		},
+		{
+			name: "missing tenant-id",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				// TenantID missing
+			},
+			expected: false,
+			errorMsg: "--tenant-id is required",
+		},
+		{
+			name: "valid with optional fields",
+			options: &token.Options{
+				ServerID:    "test-server",
+				ClientID:    "test-client",
+				TenantID:    "test-tenant",
+				Environment: "AzureCloud",
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     registry,
+				IsSet:            func(flag string) bool { return false },
+			}
+
+			result := handler.Validate(ctx)
+			if result.IsValid != tt.expected {
+				t.Errorf("Expected IsValid=%v, got %v. Errors: %v", tt.expected, result.IsValid, result.Errors)
+			}
+
+			if !tt.expected && tt.errorMsg != "" {
+				found := false
+				for _, err := range result.Errors {
+					if strings.Contains(err, tt.errorMsg) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected error containing '%s', got errors: %v", tt.errorMsg, result.Errors)
+				}
+			}
+		})
+	}
+}
+
+func TestDeviceCodeLoginHandlerBuildExecArgs(t *testing.T) {
+	handler := NewDeviceCodeLoginHandler()
+	registry := mapper.NewRegistry()
+
+	tests := []struct {
+		name          string
+		options       *token.Options
+		isLegacy      bool
+		expectedLen   int
+		shouldContain []string
+	}{
+		{
+			name: "minimal device code login",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				TenantID: "test-tenant",
+			},
+			isLegacy:    false,
+			expectedLen: 7,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+			},
+		},
+		{
+			name: "device code login with environment",
+			options: &token.Options{
+				ServerID:    "test-server",
+				ClientID:    "test-client",
+				TenantID:    "test-tenant",
+				Environment: "AzureCloud",
+			},
+			isLegacy:    false,
+			expectedLen: 9,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+				"--environment", "AzureCloud",
+			},
+		},
+		{
+			name: "device code login with legacy flag",
+			options: &token.Options{
+				ServerID: "test-server",
+				ClientID: "test-client",
+				TenantID: "test-tenant",
+			},
+			isLegacy:    true,
+			expectedLen: 8,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+				"--legacy",
+			},
+		},
+		{
+			name: "device code login with all options",
+			options: &token.Options{
+				ServerID:    "test-server",
+				ClientID:    "test-client",
+				TenantID:    "test-tenant",
+				Environment: "AzureCloud",
+			},
+			isLegacy:    true,
+			expectedLen: 10,
+			shouldContain: []string{
+				"get-token",
+				"--server-id", "test-server",
+				"--client-id", "test-client",
+				"--tenant-id", "test-tenant",
+				"--environment", "AzureCloud",
+				"--legacy",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: tt.isLegacy,
+				FlagRegistry:     registry,
+				IsSet:            func(flag string) bool { return false },
+			}
+
+			argBuilder := builder.NewExecArgsBuilder()
+			err := handler.BuildExecArgs(ctx, argBuilder)
+
+			if err != nil {
+				t.Errorf("BuildExecArgs returned unexpected error: %v", err)
+			}
+
+			args, err := argBuilder.Build()
+			if err != nil {
+				t.Errorf("Builder.Build() returned unexpected error: %v", err)
+			}
+
+			if len(args) != tt.expectedLen {
+				t.Errorf("Expected %d arguments, got %d: %v", tt.expectedLen, len(args), args)
+			}
+
+			// Check that all expected strings are present
+			argsStr := strings.Join(args, " ")
+			for _, expected := range tt.shouldContain {
+				if !strings.Contains(argsStr, expected) {
+					t.Errorf("Expected argument list to contain '%s', got: %v", expected, args)
+				}
+			}
+		})
+	}
 }
 
 func TestServicePrincipalLoginHandler(t *testing.T) {
