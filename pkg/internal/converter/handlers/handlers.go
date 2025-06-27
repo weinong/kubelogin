@@ -19,6 +19,7 @@ type ConversionContext struct {
 	IsLegacyProvider bool
 	FlagRegistry     *mapper.Registry
 	IsSet            func(string) bool // Function to check if flag was explicitly set
+	AzureConfigDir   string            // Azure CLI config directory
 }
 
 // ValidationResult contains the result of validating conversion arguments
@@ -236,7 +237,7 @@ func (h *ServicePrincipalLoginHandler) Validate(ctx *ConversionContext) Validati
 	// At least one authentication method must be provided
 	hasClientSecret := ctx.Options.ClientSecret != ""
 	hasClientCert := ctx.Options.ClientCert != ""
-	
+
 	if !hasClientSecret && !hasClientCert {
 		errors = append(errors, "service principal login requires either --client-secret or --client-certificate")
 	}
@@ -244,11 +245,11 @@ func (h *ServicePrincipalLoginHandler) Validate(ctx *ConversionContext) Validati
 	// PoP token validation - both flags must be provided together
 	isPoPEnabled := ctx.Options.IsPoPTokenEnabled
 	popClaims := ctx.Options.PoPTokenClaims
-	
+
 	if isPoPEnabled && popClaims == "" {
 		errors = append(errors, "--pop-claims is required when --pop-enabled is specified for service principal login")
 	}
-	
+
 	if !isPoPEnabled && popClaims != "" {
 		errors = append(errors, "--pop-enabled is required when --pop-claims is specified for service principal login")
 	}
@@ -324,7 +325,7 @@ func (h *MSILoginHandler) Validate(ctx *ConversionContext) ValidationResult {
 	// Client ID and Identity Resource ID are mutually exclusive
 	hasClientID := ctx.Options.ClientID != ""
 	hasIdentityResourceID := ctx.Options.IdentityResourceID != ""
-	
+
 	if hasClientID && hasIdentityResourceID {
 		errors = append(errors, "MSI login cannot specify both --client-id and --identity-resource-id, they are mutually exclusive")
 	}
@@ -356,6 +357,47 @@ func (h *MSILoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *buil
 	return nil
 }
 
+// AzureCLILoginHandler handles Azure CLI login method
+type AzureCLILoginHandler struct {
+	BaseHandler
+}
+
+// NewAzureCLILoginHandler creates a new Azure CLI login handler
+func NewAzureCLILoginHandler() *AzureCLILoginHandler {
+	return &AzureCLILoginHandler{
+		BaseHandler: BaseHandler{
+			name:          "azurecli",
+			requiredFlags: []string{"server-id"},
+			optionalFlags: []string{"tenant-id", "azure-config-dir"},
+		},
+	}
+}
+
+// Validate validates the conversion context for Azure CLI login
+func (h *AzureCLILoginHandler) Validate(ctx *ConversionContext) ValidationResult {
+	// Azure CLI login only requires base validation
+	// The tenant-id is special for Azure CLI - it can be provided but is not required
+	// as noted in the original code comments about MSI scenarios
+	return h.BaseHandler.Validate(ctx)
+}
+
+// BuildExecArgs builds exec arguments for Azure CLI login using convenience builders
+func (h *AzureCLILoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+	// Add required server ID argument
+	argBuilder.AddRequiredArgument("--server-id", ctx.Options.ServerID)
+
+	// Add optional tenant ID if explicitly set
+	// Note: When converting to azurecli login, tenantID from the input kubeconfig
+	// will be disregarded and will have to come from explicit flag `--tenant-id`.
+	// This is because azure cli logged in using MSI does not allow specifying tenant ID
+	// See https://github.com/Azure/kubelogin/issues/123#issuecomment-1209652342
+	if ctx.IsSet("tenant-id") {
+		argBuilder.AddOptionalArgument("--tenant-id", ctx.Options.TenantID)
+	}
+
+	return nil
+}
+
 // Registry for all login method handlers
 type HandlerRegistry struct {
 	handlers map[string]LoginMethodHandler
@@ -372,7 +414,8 @@ func NewHandlerRegistry() *HandlerRegistry {
 	registry.Register(NewDeviceCodeLoginHandler())
 	registry.Register(NewServicePrincipalLoginHandler())
 	registry.Register(NewMSILoginHandler())
-	// TODO: Add other handlers (AzureCLI, WorkloadIdentity, ROPC, AzureDeveloperCLI)
+	registry.Register(NewAzureCLILoginHandler())
+	// TODO: Add other handlers (WorkloadIdentity, ROPC, AzureDeveloperCLI)
 
 	return registry
 }

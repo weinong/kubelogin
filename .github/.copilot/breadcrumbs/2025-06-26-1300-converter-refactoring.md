@@ -295,6 +295,10 @@ type BaseHandler struct {
    - Required: `server-id`
    - Optional: `client-id`, `identity-resource-id`
 
+5. **AzureCLILoginHandler** - Azure CLI authentication
+   - Required: `server-id`
+   - Optional: `tenant-id`, `azure-config-dir`
+
 **Handler Registry System**:
 - **Centralized Registration**: All handlers registered in `NewHandlerRegistry()`
 - **Runtime Lookup**: Handlers retrieved by login method name
@@ -529,6 +533,85 @@ get-token --server-id test-server --client-id test-client --tenant-id test-tenan
 - Implements base validation from BaseHandler (no special validation needed)
 - Maintains backward compatibility with existing exec argument format
 
+### Task 4.5: Implement AzureCLILoginHandler ✅
+
+**Implementation**: Enhanced the AzureCLILoginHandler with sophisticated argument building and special tenant-id handling for Azure CLI scenarios.
+
+**Key Enhancements**:
+
+1. **Special Tenant-ID Logic**:
+   - **Explicit Flag Requirement**: Tenant-ID must be explicitly set via flag, not inherited from kubeconfig
+   - **MSI Compatibility**: Handles Azure CLI logged in using MSI where tenant-ID cannot be specified
+   - **Clear Documentation**: Documents the GitHub issue #123 that explains this behavior
+
+2. **Minimal Requirements**:
+   - **Required Flags**: Only `server-id` is required for Azure CLI login
+   - **Optional Tenant**: `tenant-id` is optional and only used if explicitly set
+   - **Azure Config Dir**: Supports `azure-config-dir` for custom Azure CLI configuration paths
+
+3. **Enhanced ConversionContext**:
+   - **Added AzureConfigDir**: Extended ConversionContext to include Azure CLI config directory
+   - **Environment Variables**: Supports setting AZURE_CONFIG_DIR environment variable (future implementation)
+
+**Enhanced Argument Building**:
+```go
+func (h *AzureCLILoginHandler) BuildExecArgs(ctx *ConversionContext, argBuilder *builder.ExecArgsBuilder) error {
+    // Add required server ID argument
+    argBuilder.AddRequiredArgument("--server-id", ctx.Options.ServerID)
+
+    // Add optional tenant ID if explicitly set
+    // Note: When converting to azurecli login, tenantID from the input kubeconfig 
+    // will be disregarded and will have to come from explicit flag `--tenant-id`.
+    // This is because azure cli logged in using MSI does not allow specifying tenant ID
+    // See https://github.com/Azure/kubelogin/issues/123#issuecomment-1209652342
+    if ctx.IsSet("tenant-id") {
+        argBuilder.AddOptionalArgument("--tenant-id", ctx.Options.TenantID)
+    }
+
+    return nil
+}
+```
+
+**Key Improvements Over Generic Implementation**:
+- **Domain-specific Logic**: Implements Azure CLI specific tenant-ID handling rules
+- **Clear Documentation**: Code comments explain the complex tenant-ID behavior
+- **Minimal Surface**: Only requires what's absolutely necessary for Azure CLI
+- **Compatibility**: Handles MSI scenarios where tenant-ID cannot be specified
+
+**Argument Generation Examples**:
+
+*Minimal Azure CLI Login*:
+```bash
+get-token --server-id test-server
+```
+
+*Azure CLI with Explicit Tenant*:
+```bash
+get-token --server-id test-server --tenant-id test-tenant
+```
+
+*Azure CLI with Tenant in Options but Not Set* (tenant ignored):
+```bash
+get-token --server-id test-server
+```
+
+**Testing Coverage**:
+- **Basic Functionality**: Handler creation, name, required/optional flags
+- **Validation Scenarios**: Valid options, missing server-id, minimal valid scenarios
+- **Argument Building**: Minimal login, explicit tenant-id, tenant in options but not set, error handling
+- **Special Logic**: Explicit vs implicit tenant-id flag handling
+
+**Files Enhanced**:
+- `pkg/internal/converter/handlers/handlers.go` - Added AzureCLILoginHandler implementation and enhanced ConversionContext
+- `pkg/internal/converter/handlers/handlers_test.go` - Added 3 comprehensive test functions and fixed registry test
+- `pkg/internal/converter/validation/validation.go` - Added Azure CLI validation schema
+
+**Standards Compliance**:
+- Follows the LoginMethodHandler interface exactly
+- Uses base validation from BaseHandler (no special cross-field validation needed)
+- Implements Azure CLI domain-specific logic while maintaining interface compliance
+- Maintains backward compatibility with existing exec argument format
+
 ## Changes Made
 
 *To be filled during implementation*
@@ -573,7 +656,7 @@ get-token --server-id test-server --client-id test-client --tenant-id test-tenan
 - [x] Task 4.2: Implement DeviceCodeLoginHandler
 - [x] Task 4.3: Implement ServicePrincipalLoginHandler  
 - [x] Task 4.4: Implement MSILoginHandler
-- [ ] Task 4.5: Implement AzureCLILoginHandler
+- [x] Task 4.5: Implement AzureCLILoginHandler
 - [ ] Task 4.6: Implement WorkloadIdentityLoginHandler
 - [ ] Task 4.7: Implement ROPCLoginHandler
 - [ ] Task 4.8: Implement AzureDeveloperCLILoginHandler

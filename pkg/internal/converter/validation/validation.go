@@ -12,7 +12,7 @@ import (
 type ValidationRule interface {
 	// Validate checks if the rule passes and returns error message if not
 	Validate(ctx *ValidationContext) *ValidationError
-	
+
 	// GetDescription returns a human-readable description of the rule
 	GetDescription() string
 }
@@ -20,9 +20,9 @@ type ValidationRule interface {
 // ValidationContext contains all context needed for validation
 type ValidationContext struct {
 	LoginMethod string
-	Values      map[string]string  // flag name -> value
-	Flags       map[string]bool    // flag name -> is set
-	Options     interface{}        // token.Options for complex validations
+	Values      map[string]string // flag name -> value
+	Flags       map[string]bool   // flag name -> is set
+	Options     interface{}       // token.Options for complex validations
 }
 
 // ValidationError represents a validation failure
@@ -109,13 +109,13 @@ func NewMutuallyExclusiveRule(groupName string, fieldNames ...string) *MutuallyE
 // Validate checks that only one field in the group is set
 func (r *MutuallyExclusiveRule) Validate(ctx *ValidationContext) *ValidationError {
 	setFields := []string{}
-	
+
 	for _, fieldName := range r.FieldNames {
 		if value, exists := ctx.Values[fieldName]; exists && strings.TrimSpace(value) != "" {
 			setFields = append(setFields, fieldName)
 		}
 	}
-	
+
 	if len(setFields) > 1 {
 		return &ValidationError{
 			Rule:        "mutually_exclusive",
@@ -124,7 +124,7 @@ func (r *MutuallyExclusiveRule) Validate(ctx *ValidationContext) *ValidationErro
 			LoginMethod: ctx.LoginMethod,
 		}
 	}
-	
+
 	return nil
 }
 
@@ -153,7 +153,7 @@ func NewConditionalRequiredRule(triggerField, requiredField, message string) *Co
 func (r *ConditionalRequiredRule) Validate(ctx *ValidationContext) *ValidationError {
 	triggerValue, triggerExists := ctx.Values[r.TriggerField]
 	requiredValue, requiredExists := ctx.Values[r.RequiredField]
-	
+
 	// If trigger field is set and has value, required field must also be set
 	if triggerExists && strings.TrimSpace(triggerValue) != "" {
 		if !requiredExists || strings.TrimSpace(requiredValue) == "" {
@@ -165,7 +165,7 @@ func (r *ConditionalRequiredRule) Validate(ctx *ValidationContext) *ValidationEr
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -197,13 +197,13 @@ func (s *LoginMethodSchema) AddRule(rule ValidationRule) *LoginMethodSchema {
 // Validate validates the context against all rules in the schema
 func (s *LoginMethodSchema) Validate(ctx *ValidationContext) *ValidationResult {
 	result := &ValidationResult{IsValid: true}
-	
+
 	for _, rule := range s.Rules {
 		if err := rule.Validate(ctx); err != nil {
 			result.AddError(err)
 		}
 	}
-	
+
 	return result
 }
 
@@ -217,10 +217,10 @@ func NewSchemaRegistry() *SchemaRegistry {
 	registry := &SchemaRegistry{
 		schemas: make(map[string]*LoginMethodSchema),
 	}
-	
+
 	// Register default schemas
 	registry.registerDefaultSchemas()
-	
+
 	return registry
 }
 
@@ -232,13 +232,13 @@ func (r *SchemaRegistry) registerDefaultSchemas() {
 		AddRule(NewRequiredFieldRule("client-id", "Client ID")).
 		AddRule(NewRequiredFieldRule("tenant-id", "Tenant ID")).
 		AddRule(NewConditionalRequiredRule("pop-enabled", "pop-claims", "--pop-claims is required when specifying --pop-enabled"))
-	
+
 	// Device Code Login Schema
 	devicecode := NewLoginMethodSchema("devicecode").
 		AddRule(NewRequiredFieldRule("server-id", "Server ID")).
 		AddRule(NewRequiredFieldRule("client-id", "Client ID")).
 		AddRule(NewRequiredFieldRule("tenant-id", "Tenant ID"))
-	
+
 	// Service Principal Login Schema
 	spn := NewLoginMethodSchema("spn").
 		AddRule(NewRequiredFieldRule("server-id", "Server ID")).
@@ -246,17 +246,22 @@ func (r *SchemaRegistry) registerDefaultSchemas() {
 		AddRule(NewRequiredFieldRule("tenant-id", "Tenant ID")).
 		AddRule(NewMutuallyExclusiveRule("authentication", "client-secret", "client-certificate")).
 		AddRule(NewConditionalRequiredRule("pop-enabled", "pop-claims", "--pop-claims is required when specifying --pop-enabled"))
-	
+
 	// MSI Login Schema
 	msi := NewLoginMethodSchema("msi").
 		AddRule(NewRequiredFieldRule("server-id", "Server ID")).
 		AddRule(NewMutuallyExclusiveRule("identity", "client-id", "identity-resource-id"))
-	
+
+	// Azure CLI Login Schema
+	azurecli := NewLoginMethodSchema("azurecli").
+		AddRule(NewRequiredFieldRule("server-id", "Server ID"))
+
 	// Register schemas
 	r.RegisterSchema(interactive)
 	r.RegisterSchema(devicecode)
 	r.RegisterSchema(spn)
 	r.RegisterSchema(msi)
+	r.RegisterSchema(azurecli)
 }
 
 // RegisterSchema registers a schema for a login method
@@ -283,7 +288,7 @@ func (r *SchemaRegistry) ValidateLoginMethod(loginMethod string, ctx *Validation
 		})
 		return result
 	}
-	
+
 	ctx.LoginMethod = loginMethod
 	return schema.Validate(ctx)
 }

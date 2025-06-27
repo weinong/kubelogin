@@ -10,32 +10,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
-func TestConversionContext(t *testing.T) {
-	registry := mapper.NewRegistry()
-	options := &token.Options{
-		ServerID: "test-server",
-		ClientID: "test-client",
-		TenantID: "test-tenant",
-	}
-	authInfo := &api.AuthInfo{}
-
-	ctx := &ConversionContext{
-		Options:          options,
-		AuthInfo:         authInfo,
-		IsLegacyProvider: false,
-		FlagRegistry:     registry,
-		IsSet:            func(flag string) bool { return false },
-	}
-
-	if ctx.Options == nil {
-		t.Error("ConversionContext Options should not be nil")
-	}
-
-	if ctx.FlagRegistry == nil {
-		t.Error("ConversionContext FlagRegistry should not be nil")
-	}
-}
-
 func TestValidationResult(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -628,18 +602,18 @@ func TestDeviceCodeLoginHandlerBuildExecArgs(t *testing.T) {
 
 func TestServicePrincipalLoginHandler(t *testing.T) {
 	handler := NewServicePrincipalLoginHandler()
-	
+
 	if handler.GetName() != token.ServicePrincipalLogin {
 		t.Errorf("Expected name '%s', got '%s'", token.ServicePrincipalLogin, handler.GetName())
 	}
-	
+
 	// Test that required flags include the core auth flags
 	requiredFlags := handler.GetRequiredFlags()
 	expectedRequired := []string{"server-id", "client-id", "tenant-id"}
 	if len(requiredFlags) != len(expectedRequired) {
 		t.Errorf("Expected %d required flags, got %d", len(expectedRequired), len(requiredFlags))
 	}
-	
+
 	// Test that optional flags include certificate and secret options
 	optionalFlags := handler.GetOptionalFlags()
 	if len(optionalFlags) < 3 {
@@ -650,7 +624,7 @@ func TestServicePrincipalLoginHandler(t *testing.T) {
 func TestServicePrincipalLoginHandlerValidation(t *testing.T) {
 	handler := NewServicePrincipalLoginHandler()
 	registry := mapper.NewRegistry()
-	
+
 	tests := []struct {
 		name     string
 		options  *token.Options
@@ -691,7 +665,7 @@ func TestServicePrincipalLoginHandlerValidation(t *testing.T) {
 		{
 			name: "missing required field",
 			options: &token.Options{
-				ServerID:     "test-server",
+				ServerID: "test-server",
 				// ClientID missing
 				TenantID:     "test-tenant",
 				ClientSecret: "test-secret",
@@ -749,7 +723,7 @@ func TestServicePrincipalLoginHandlerValidation(t *testing.T) {
 			expected: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &ConversionContext{
@@ -759,12 +733,12 @@ func TestServicePrincipalLoginHandlerValidation(t *testing.T) {
 				FlagRegistry:     registry,
 				IsSet:            func(flag string) bool { return false },
 			}
-			
+
 			result := handler.Validate(ctx)
 			if result.IsValid != tt.expected {
 				t.Errorf("Expected IsValid=%v, got %v. Errors: %v", tt.expected, result.IsValid, result.Errors)
 			}
-			
+
 			if !tt.expected && tt.errorMsg != "" {
 				found := false
 				for _, err := range result.Errors {
@@ -784,7 +758,7 @@ func TestServicePrincipalLoginHandlerValidation(t *testing.T) {
 func TestServicePrincipalLoginHandlerBuildExecArgs(t *testing.T) {
 	handler := NewServicePrincipalLoginHandler()
 	registry := mapper.NewRegistry()
-	
+
 	tests := []struct {
 		name          string
 		options       *token.Options
@@ -876,7 +850,7 @@ func TestServicePrincipalLoginHandlerBuildExecArgs(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &ConversionContext{
@@ -886,23 +860,23 @@ func TestServicePrincipalLoginHandlerBuildExecArgs(t *testing.T) {
 				FlagRegistry:     registry,
 				IsSet:            func(flag string) bool { return false },
 			}
-			
+
 			argBuilder := builder.NewExecArgsBuilder()
 			err := handler.BuildExecArgs(ctx, argBuilder)
-			
+
 			if err != nil {
 				t.Errorf("BuildExecArgs returned unexpected error: %v", err)
 			}
-			
+
 			args, err := argBuilder.Build()
 			if err != nil {
 				t.Errorf("Builder.Build() returned unexpected error: %v", err)
 			}
-			
+
 			if len(args) != tt.expectedLen {
 				t.Errorf("Expected %d arguments, got %d: %v", tt.expectedLen, len(args), args)
 			}
-			
+
 			// Check that all expected strings are present
 			argsStr := strings.Join(args, " ")
 			for _, expected := range tt.shouldContain {
@@ -1104,6 +1078,7 @@ func TestHandlerRegistry(t *testing.T) {
 		token.DeviceCodeLogin,
 		token.ServicePrincipalLogin,
 		token.MSILogin,
+		token.AzureCLILogin,
 	}
 
 	for _, loginMethod := range expectedHandlers {
@@ -1152,5 +1127,200 @@ func TestHandlerRegistryNonExistentHandler(t *testing.T) {
 	}
 	if handler != nil {
 		t.Error("Expected handler to be nil for non-existent handler")
+	}
+}
+
+// Tests for AzureCLILoginHandler
+
+func TestAzureCLILoginHandler_Basic(t *testing.T) {
+	handler := NewAzureCLILoginHandler()
+
+	if handler.GetName() != "azurecli" {
+		t.Errorf("Expected name 'azurecli', got '%s'", handler.GetName())
+	}
+
+	requiredFlags := handler.GetRequiredFlags()
+	if len(requiredFlags) != 1 || requiredFlags[0] != "server-id" {
+		t.Errorf("Expected required flags [server-id], got %v", requiredFlags)
+	}
+
+	optionalFlags := handler.GetOptionalFlags()
+	expectedOptional := []string{"tenant-id", "azure-config-dir"}
+	if len(optionalFlags) != len(expectedOptional) {
+		t.Errorf("Expected %d optional flags, got %d", len(expectedOptional), len(optionalFlags))
+	}
+	for i, flag := range expectedOptional {
+		if optionalFlags[i] != flag {
+			t.Errorf("Expected optional flag '%s', got '%s'", flag, optionalFlags[i])
+		}
+	}
+}
+
+func TestAzureCLILoginHandler_Validation(t *testing.T) {
+	handler := NewAzureCLILoginHandler()
+	registry := mapper.NewRegistry()
+
+	tests := []struct {
+		name      string
+		options   *token.Options
+		wantValid bool
+		wantError string
+	}{
+		{
+			name: "valid options",
+			options: &token.Options{
+				ServerID: "test-server",
+				TenantID: "test-tenant", // Optional for Azure CLI
+			},
+			wantValid: true,
+		},
+		{
+			name: "missing server-id",
+			options: &token.Options{
+				TenantID: "test-tenant",
+			},
+			wantValid: false,
+			wantError: "server-id is required",
+		},
+		{
+			name: "minimal valid - server-id only",
+			options: &token.Options{
+				ServerID: "test-server",
+			},
+			wantValid: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     registry,
+				IsSet:            func(flag string) bool { return false },
+			}
+
+			result := handler.Validate(ctx)
+
+			if result.IsValid != tt.wantValid {
+				t.Errorf("Expected validation result %t, got %t", tt.wantValid, result.IsValid)
+			}
+
+			if !tt.wantValid && tt.wantError != "" {
+				found := false
+				for _, err := range result.Errors {
+					if strings.Contains(err, tt.wantError) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected error containing '%s', got %v", tt.wantError, result.Errors)
+				}
+			}
+		})
+	}
+}
+
+func TestAzureCLILoginHandler_BuildExecArgs(t *testing.T) {
+	handler := NewAzureCLILoginHandler()
+	registry := mapper.NewRegistry()
+
+	tests := []struct {
+		name          string
+		options       *token.Options
+		tenantIDIsSet bool
+		expectedArgs  []string
+		shouldError   bool
+	}{
+		{
+			name: "minimal Azure CLI login",
+			options: &token.Options{
+				ServerID: "test-server",
+			},
+			tenantIDIsSet: false,
+			expectedArgs:  []string{"get-token", "--server-id", "test-server"},
+		},
+		{
+			name: "Azure CLI with tenant-id set explicitly",
+			options: &token.Options{
+				ServerID: "test-server",
+				TenantID: "test-tenant",
+			},
+			tenantIDIsSet: true,
+			expectedArgs:  []string{"get-token", "--server-id", "test-server", "--tenant-id", "test-tenant"},
+		},
+		{
+			name: "Azure CLI with tenant-id in options but not explicitly set",
+			options: &token.Options{
+				ServerID: "test-server",
+				TenantID: "test-tenant",
+			},
+			tenantIDIsSet: false,
+			expectedArgs:  []string{"get-token", "--server-id", "test-server"},
+		},
+		{
+			name: "missing server-id should error",
+			options: &token.Options{
+				TenantID: "test-tenant",
+			},
+			tenantIDIsSet: true,
+			shouldError:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &ConversionContext{
+				Options:          tt.options,
+				AuthInfo:         &api.AuthInfo{},
+				IsLegacyProvider: false,
+				FlagRegistry:     registry,
+				IsSet: func(flag string) bool {
+					if flag == "tenant-id" {
+						return tt.tenantIDIsSet
+					}
+					return false
+				},
+			}
+
+			argBuilder := builder.NewExecArgsBuilder()
+			err := handler.BuildExecArgs(ctx, argBuilder)
+
+			if tt.shouldError {
+				if err == nil {
+					// Check if builder has errors
+					_, buildErr := argBuilder.Build()
+					if buildErr == nil {
+						t.Error("Expected error but got none")
+					}
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			args, buildErr := argBuilder.Build()
+			if buildErr != nil {
+				t.Errorf("Build error: %v", buildErr)
+				return
+			}
+
+			if len(args) != len(tt.expectedArgs) {
+				t.Errorf("Expected %d args, got %d. Expected: %v, Got: %v",
+					len(tt.expectedArgs), len(args), tt.expectedArgs, args)
+				return
+			}
+
+			for i, expected := range tt.expectedArgs {
+				if args[i] != expected {
+					t.Errorf("Expected arg[%d] to be '%s', got '%s'", i, expected, args[i])
+				}
+			}
+		})
 	}
 }
