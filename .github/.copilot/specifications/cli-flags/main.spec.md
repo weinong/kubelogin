@@ -1,22 +1,58 @@
-# Specification: Validated and Completed Secrets Pattern
+# Specification: Enhanced Options Pattern with Private Encapsulation
 
-**Version:** 1.0
+**Version:** 2.0
 
-**Last Updated:** 2025-06-26
+**Last Updated:** 2025-06-28
 
 **Owner:** weinong
 
+**Status:** ✅ IMPLEMENTED
+
 ## 1. Purpose & Scope
 
-This document defines a structured process for handling command-line options by separating their construction into three clear phases.
+This document defines a structured process for handling command-line options by separating their construction into three clear phases with enhanced type safety and encapsulation.
 
 1. **RawOptions**: Hold all raw (unvalidated) input values (e.g., from CLI flags).
-2. **Validate()**: Validate the raw options, returning a **ValidatedOptions** object if checks pass.
-3. **Complete()**: Complete the validated options to produce an **Options** object, loading any additional configuration needed (e.g., from files).
+2. **Validate()**: Validate the raw options, returning a **ValidatedOptions** object with private encapsulated data if checks pass.
+3. **Complete()**: Complete the validated options to produce a **CompletedOptions** object, sharing validated data immutably.
 
-Each phase enforces order:
+Each phase enforces order and type safety:
 * You must call Validate() before Complete().
-* Only fully constructed Options are ready for use.
+* Validated data is privately encapsulated and cannot be modified externally.
+* Only fully constructed CompletedOptions are ready for use.
+
+## 2. Architecture Overview
+
+### Enhanced Encapsulation Pattern
+
+```go
+// Private validated data - cannot be instantiated outside package
+type validatedData struct {
+    configFlags    genericclioptions.RESTClientGetter
+    flags          *pflag.FlagSet
+    tokenOptions   *token.Options
+    context        string
+    azureConfigDir string
+}
+
+// ValidatedOptions wraps validated data with controlled access
+type ValidatedOptions struct {
+    validated *validatedData  // Private pointer - no external access
+}
+
+// CompletedOptions shares validated data immutably
+type CompletedOptions struct {
+    validated *validatedData  // Private pointer - shared with ValidatedOptions
+}
+```
+
+### Key Improvements
+
+1. **Private Data Encapsulation**: Validated data is held in a private struct that cannot be instantiated outside the package
+2. **Controlled Access**: All data access is through getter methods only
+3. **Type Safety**: Impossible to bypass validation or access unvalidated data
+4. **Immutable Sharing**: ValidatedOptions and CompletedOptions share data safely
+5. **Compile-time Safety**: Private fields prevent accidental modification
 
 ## 3. Rationale & Context
 
@@ -65,17 +101,86 @@ if err != nil {
     // handle completion error
 }
 
-// Now, finalOpts is ready to use
+// Now, finalOpts is ready to use with fully validated and completed data
+// Access data through getter methods only
+config := finalOpts.ConfigFlags()
+tokenOpts := finalOpts.TokenOptions()
 ```
 
 ### Bad Example (Don't / Avoid)
 
+```golang
+// AVOID: Trying to access private data directly
+opts := &ValidatedOptions{
+    validated: &validatedData{...}, // ERROR: Cannot access private field
+}
+
+// AVOID: Bypassing validation
+raw := DefaultOptions()
+// directly using raw options without validation - unsafe!
+UseOptions(raw) // This should never happen
+
+// AVOID: Modifying validated data (impossible with new pattern)
+validated, _ := raw.Validate()
+// validated.validated.tokenOptions = nil // ERROR: Cannot access private field
 ```
-// Code snippet demonstrating what to avoid
+
+## 5. Implementation Details
+
+### Method Signatures
+
+```golang
+// RawOptions creation
+func DefaultOptions() *Options
+
+// Validation phase
+func (o *Options) Validate() (*ValidatedOptions, error)
+
+// Completion phase
+func (vo *ValidatedOptions) Complete() (*CompletedOptions, error)
+
+// Getter methods for ValidatedOptions
+func (vo *ValidatedOptions) ConfigFlags() genericclioptions.RESTClientGetter
+func (vo *ValidatedOptions) Flags() *pflag.FlagSet
+func (vo *ValidatedOptions) TokenOptions() *token.Options
+func (vo *ValidatedOptions) Context() string
+func (vo *ValidatedOptions) AzureConfigDir() string
+
+// Getter methods for CompletedOptions (same signatures)
+func (co *CompletedOptions) ConfigFlags() genericclioptions.RESTClientGetter
+func (co *CompletedOptions) Flags() *pflag.FlagSet
+func (co *CompletedOptions) TokenOptions() *token.Options
+func (co *CompletedOptions) Context() string
+func (co *CompletedOptions) AzureConfigDir() string
 ```
 
-## 5. Related Specifications / Further Reading
+### Key Implementation Rules
 
-## 6. Keywords
+1. **Private Encapsulation**: The `validatedData` struct must be private (lowercase) and cannot be instantiated outside the package.
 
-cli, commandline, flags, options
+2. **Shared Immutable Data**: `ValidatedOptions` and `CompletedOptions` share the same `validatedData` instance via pointer, ensuring consistency without copying.
+
+3. **Getter-Only Access**: All access to validated data must go through getter methods; no direct field access is allowed.
+
+4. **Validation Integrity**: Once `Validate()` succeeds, the validated data cannot be modified, ensuring integrity throughout the lifecycle.
+
+5. **Type Safety**: The compiler prevents bypassing validation phases or accessing unvalidated data.
+
+### Benefits Achieved
+
+- **Compile-time Safety**: Private fields prevent accidental modification or bypassing validation
+- **API Clarity**: Clear progression from raw → validated → completed options
+- **Memory Efficiency**: Validated data is shared, not copied, between ValidatedOptions and CompletedOptions
+- **Maintainability**: Encapsulation makes it easier to modify internal data structures without breaking consumers
+- **Testability**: Each phase can be tested independently with clear boundaries
+
+## 6. Related Specifications / Further Reading
+
+- **Domain Knowledge**: `/github/.copilot/domain_knowledge/` (when available)
+- **Breadcrumb**: `/github/.copilot/breadcrumbs/2025-06-28-1921-options-pattern-improvement.md`
+- **Implementation**: `/pkg/internal/converter/options_new.go`
+- **Tests**: `/pkg/internal/converter/options_new_test.go`
+
+## 7. Keywords
+
+cli, commandline, flags, options, validation, encapsulation, type-safety, immutability
