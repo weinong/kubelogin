@@ -8,24 +8,31 @@ import (
 
 // newConvertCmd provides a cobra command for convert sub command
 func newConvertCmd() *cobra.Command {
-	o := converter.New()
+	rawOpts := converter.NewRawOptions()
 
 	cmd := &cobra.Command{
 		Use:          "convert-kubeconfig",
 		Short:        "convert kubeconfig to use exec auth module",
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
-			o.Flags = c.Flags()
-			o.UpdateFromEnv()
+			rawOpts.UpdateFromEnv()
 
-			if err := o.Validate(); err != nil {
+			// Validate raw options
+			validatedOpts, err := rawOpts.Validate()
+			if err != nil {
+				return err
+			}
+
+			// Complete validated options
+			completedOpts, err := validatedOpts.Complete()
+			if err != nil {
 				return err
 			}
 
 			pathOptions := clientcmd.NewDefaultPathOptions()
-			pathOptions.LoadingRules.ExplicitPath, _ = o.Flags.GetString("kubeconfig")
+			pathOptions.LoadingRules.ExplicitPath, _ = completedOpts.GetFlags().GetString("kubeconfig")
 
-			if err := converter.Convert(o, pathOptions); err != nil {
+			if err := converter.Convert(completedOpts, pathOptions); err != nil {
 				return err
 			}
 			return nil
@@ -33,8 +40,8 @@ func newConvertCmd() *cobra.Command {
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
-	o.AddFlags(cmd.Flags())
-	o.AddCompletions(cmd)
+	rawOpts.AddFlags(cmd.Flags())
+	rawOpts.AddCompletions(cmd)
 
 	return cmd
 }

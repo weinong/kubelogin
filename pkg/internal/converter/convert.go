@@ -80,18 +80,18 @@ To learn more, please go to https://azure.github.io/kubelogin/
 )
 
 // buildConversionContext creates a ConversionContext from options and authInfo using the new mapping system
-func buildConversionContext(o Options, authInfo *api.AuthInfo, registry *mapper.Registry) *handlers.ConversionContext {
+func buildConversionContext(o *CompletedOptions, authInfo *api.AuthInfo, registry *mapper.Registry) *handlers.ConversionContext {
 	// Extract values from authInfo and options using the registry
 	tokenOptions := &token.Options{
-		LoginMethod: o.TokenOptions.LoginMethod,
+		LoginMethod: o.GetTokenOptions().LoginMethod,
 	}
 
 	// Populate token options using the flag registry mapping
 	for _, mapping := range registry.GetAllMappings() {
 		if mapping.IsBoolean {
-			if o.isSet(mapping.FlagName) {
+			if o.IsSet(mapping.FlagName) {
 				// Use the flag value if explicitly set
-				value := mapping.GetBoolValue(&o.TokenOptions)
+				value := mapping.GetBoolValue(o.GetTokenOptions())
 				setBooleanField(tokenOptions, mapping.FlagName, value)
 			} else {
 				// Check for legacy auth provider config or existing exec args
@@ -99,12 +99,12 @@ func buildConversionContext(o Options, authInfo *api.AuthInfo, registry *mapper.
 				setBooleanField(tokenOptions, mapping.FlagName, value)
 			}
 		} else {
-			if o.isSet(mapping.FlagName) {
+			if o.IsSet(mapping.FlagName) {
 				// Use the flag value if explicitly set
-				value := mapping.GetValue(&o.TokenOptions)
+				value := mapping.GetValue(o.GetTokenOptions())
 				if value != "" { // Only set non-empty values to avoid overwriting good values
 					setStringField(tokenOptions, mapping.FlagName, value)
-				} else if flagValue, err := o.Flags.GetString(mapping.FlagName); err == nil && flagValue != "" {
+				} else if flagValue, err := o.GetFlags().GetString(mapping.FlagName); err == nil && flagValue != "" {
 					// Use flag value directly if TokenOptions value is empty
 					setStringField(tokenOptions, mapping.FlagName, flagValue)
 				}
@@ -121,8 +121,8 @@ func buildConversionContext(o Options, authInfo *api.AuthInfo, registry *mapper.
 		AuthInfo:         authInfo,
 		IsLegacyProvider: isLegacyAzureAuth(authInfo),
 		FlagRegistry:     registry,
-		IsSet:            o.isSet,
-		AzureConfigDir:   o.azureConfigDir,
+		IsSet:            o.IsSet,
+		AzureConfigDir:   o.GetAzureConfigDir(),
 	}
 }
 
@@ -228,8 +228,8 @@ func setBooleanField(options *token.Options, flagName string, value bool) {
 	}
 }
 
-func Convert(o Options, pathOptions *clientcmd.PathOptions) error {
-	clientConfig := o.configFlags.ToRawKubeConfigLoader()
+func Convert(o *CompletedOptions, pathOptions *clientcmd.PathOptions) error {
+	clientConfig := o.GetConfigFlags().ToRawKubeConfigLoader()
 	var kubeconfigs []string
 
 	klog.V(5).Info(o.ToString())
@@ -251,11 +251,11 @@ func Convert(o Options, pathOptions *clientcmd.PathOptions) error {
 
 	targetAuthInfo := ""
 
-	if o.context != "" {
-		if config.Contexts[o.context] == nil {
-			return fmt.Errorf("no context exists with the name: %q", o.context)
+	if o.GetContext() != "" {
+		if config.Contexts[o.GetContext()] == nil {
+			return fmt.Errorf("no context exists with the name: %q", o.GetContext())
 		}
-		targetAuthInfo = config.Contexts[o.context].AuthInfo
+		targetAuthInfo = config.Contexts[o.GetContext()].AuthInfo
 	}
 
 	for name, authInfo := range config.AuthInfos {
@@ -304,9 +304,9 @@ func Convert(o Options, pathOptions *clientcmd.PathOptions) error {
 
 		// Use the new handler system to build login-method-specific arguments
 		handlerRegistry := handlers.NewHandlerRegistry()
-		handler, exists := handlerRegistry.GetHandler(o.TokenOptions.LoginMethod)
+		handler, exists := handlerRegistry.GetHandler(o.GetTokenOptions().LoginMethod)
 		if !exists {
-			return fmt.Errorf("unsupported login method: %s", o.TokenOptions.LoginMethod)
+			return fmt.Errorf("unsupported login method: %s", o.GetTokenOptions().LoginMethod)
 		}
 
 		// Validate the context for this login method
@@ -332,11 +332,11 @@ func Convert(o Options, pathOptions *clientcmd.PathOptions) error {
 		exec.Args = append(exec.Args, handlerArgs...)
 
 		// Add --login at the end (as expected by tests)
-		exec.Args = append(exec.Args, argLoginMethod, o.TokenOptions.LoginMethod)
+		exec.Args = append(exec.Args, argLoginMethod, o.GetTokenOptions().LoginMethod)
 
 		// Handle special case for Azure CLI which needs environment variable
-		if o.TokenOptions.LoginMethod == token.AzureCLILogin && o.azureConfigDir != "" {
-			exec.Env = append(exec.Env, api.ExecEnvVar{Name: azureConfigDir, Value: o.azureConfigDir})
+		if o.GetTokenOptions().LoginMethod == token.AzureCLILogin && o.GetAzureConfigDir() != "" {
+			exec.Env = append(exec.Env, api.ExecEnvVar{Name: azureConfigDir, Value: o.GetAzureConfigDir()})
 		}
 
 		authInfo.Exec = exec

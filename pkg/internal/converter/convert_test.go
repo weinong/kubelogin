@@ -1492,17 +1492,33 @@ func TestConvert(t *testing.T) {
 				data.installHint,
 			)
 			fs := &pflag.FlagSet{}
-			o := Options{
-				Flags: fs,
-				configFlags: genericclioptions.NewTestConfigFlags().
-					WithClientConfig(clientcmd.NewNonInteractiveClientConfig(*config, clusterName1, &clientcmd.ConfigOverrides{}, nil)),
-			}
-			o.AddFlags(fs)
+			rawOpts := NewRawOptions()
+			rawOpts.configFlags = genericclioptions.NewTestConfigFlags().
+				WithClientConfig(clientcmd.NewNonInteractiveClientConfig(*config, clusterName1, &clientcmd.ConfigOverrides{}, nil))
+			rawOpts.AddFlags(fs)
 
 			for k, v := range data.overrideFlags {
-				if err := o.setFlag(k, v); err != nil {
+				if err := rawOpts.setFlag(k, v); err != nil {
 					t.Fatalf("unable to add flag: %s, err: %s", k, err)
 				}
+			}
+
+			// Validate and complete options for the new pattern
+			validatedOpts, err := rawOpts.Validate()
+			if err != nil && data.expectedError == "" {
+				t.Fatalf("Unexpected validation error: %v", err)
+			}
+			if err != nil && data.expectedError != "" {
+				// Check if validation error matches expected error
+				if err.Error() != data.expectedError {
+					t.Fatalf("Expected error: %q, but got validation error: %q", data.expectedError, err)
+				}
+				return // Skip the rest of the test if validation failed as expected
+			}
+
+			completedOpts, err := validatedOpts.Complete()
+			if err != nil {
+				t.Fatalf("Unexpected completion error: %v", err)
 			}
 
 			pathOptions := clientcmd.PathOptions{
@@ -1511,7 +1527,7 @@ func TestConvert(t *testing.T) {
 					ExplicitPath: kubeconfigFile,
 				},
 			}
-			err = Convert(o, &pathOptions)
+			err = Convert(completedOpts, &pathOptions)
 			if data.expectedError == "" && err != nil {
 				t.Fatalf("Unexpected error from Convert: %v", err)
 			} else if data.expectedError != "" {
@@ -1520,7 +1536,7 @@ func TestConvert(t *testing.T) {
 				}
 			} else {
 				// only need to validate fields if we're not expecting an error
-				if o.context != "" {
+				if completedOpts.GetContext() != "" {
 					// when --context is specified, convert-kubeconfig will convert only the targeted context
 					// hence, we expect the second auth info not to change
 					validate(t, clusterName1, config.AuthInfos[clusterName1], data.expectedArgs, data.expectedExecName, data.expectedInstallHint, data.expectedEnv)
@@ -1670,10 +1686,6 @@ func validateAuthInfoThatShouldNotChange(
 			t.Fatalf("[context:%s]: %s=%s does not match with output %s=%s", clusterName, k, v, k, authInfo.AuthProvider.Config[k])
 		}
 	}
-}
-
-func (o *Options) setFlag(key, value string) error {
-	return o.Flags.Set(key, value)
 }
 
 func contains(a []string, x string) bool {
