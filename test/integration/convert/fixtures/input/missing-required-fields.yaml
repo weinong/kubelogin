@@ -1,0 +1,32 @@
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJlVENDQVNDZ0F3SUJBZ0lSQUt0ZXN0Y2VydGlmaWNhdGVhdXRob3JpdHlkYXRhQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0=
+    server: https://missing-fields-cluster.region.azmk8s.io:443
+  name: missing-fields-cluster
+contexts:
+- context:
+    cluster: missing-fields-cluster
+    user: missing-fields-user
+  name: missing-fields-context
+current-context: missing-fields-context
+kind: Config
+preferences: {}
+users:
+- name: missing-fields-user
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - get-token
+      - --environment
+      - AzurePublicCloud
+      # Missing required fields like server-id, client-id, tenant-id
+      - --login
+      - devicecode
+      command: kubelogin
+      env: null
+      installHint: |
+        kubelogin is not installed which is required to connect to AAD enabled cluster.
+        To learn more, please go to https://aka.ms/aks/kubelogin
+      provideClusterInfo: false

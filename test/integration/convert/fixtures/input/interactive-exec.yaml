@@ -1,0 +1,37 @@
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJlVENDQVNDZ0F3SUJBZ0lSQUt0ZXN0Y2VydGlmaWNhdGVhdXRob3JpdHlkYXRhQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0=
+    server: https://interactive-test-cluster.region.azmk8s.io:443
+  name: interactive-test-cluster
+contexts:
+- context:
+    cluster: interactive-test-cluster
+    user: interactive-test-user
+  name: interactive-test-context
+current-context: interactive-test-context
+kind: Config
+preferences: {}
+users:
+- name: interactive-test-user
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - get-token
+      - --environment
+      - AzurePublicCloud
+      - --server-id
+      - 6dae42f8-4368-4678-94ff-3960e28e3630
+      - --client-id
+      - 80faf920-1908-4b52-b5ef-a8e7bedfc67a
+      - --tenant-id
+      - 84cff436-d6b3-4e81-9ecd-cab809615c5c
+      - --login
+      - interactive
+      command: kubelogin
+      env: null
+      installHint: |
+        kubelogin is not installed which is required to connect to AAD enabled cluster.
+        To learn more, please go to https://aka.ms/aks/kubelogin
+      provideClusterInfo: false

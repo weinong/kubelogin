@@ -18,5 +18,8 @@ bin
 
 coverage.txt
 
+# Integration test output
+test/integration/convert/_output/
+
 # JetBrains IDE folder
 .idea

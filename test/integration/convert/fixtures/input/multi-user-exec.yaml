@@ -1,0 +1,91 @@
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJlVENDQVNDZ0F3SUJBZ0lSQUt0ZXN0Y2VydGlmaWNhdGVhdXRob3JpdHlkYXRhQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0=
+    server: https://prod-cluster.region.azmk8s.io:443
+  name: prod-cluster
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJlVENDQVNDZ0F3SUJBZ0lSQUt0ZXN0Y2VydGlmaWNhdGVhdXRob3JpdHlkYXRhQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0=
+    server: https://dev-cluster.region.azmk8s.io:443
+  name: dev-cluster
+contexts:
+- context:
+    cluster: prod-cluster
+    user: prod-devicecode-user
+  name: prod-context
+- context:
+    cluster: dev-cluster
+    user: dev-msi-user
+  name: dev-context
+- context:
+    cluster: prod-cluster
+    user: admin-spn-user
+  name: admin-context
+current-context: prod-context
+kind: Config
+preferences: {}
+users:
+- name: prod-devicecode-user
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - get-token
+      - --environment
+      - AzurePublicCloud
+      - --server-id
+      - 6dae42f8-4368-4678-94ff-3960e28e3630
+      - --client-id
+      - 80faf920-1908-4b52-b5ef-a8e7bedfc67a
+      - --tenant-id
+      - 84cff436-d6b3-4e81-9ecd-cab809615c5c
+      - --login
+      - devicecode
+      command: kubelogin
+      env: null
+      installHint: |
+        kubelogin is not installed which is required to connect to AAD enabled cluster.
+        To learn more, please go to https://aka.ms/aks/kubelogin
+      provideClusterInfo: false
+- name: dev-msi-user
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - get-token
+      - --environment
+      - AzurePublicCloud
+      - --server-id
+      - 6dae42f8-4368-4678-94ff-3960e28e3630
+      - --login
+      - msi
+      command: kubelogin
+      env: null
+      installHint: |
+        kubelogin is not installed which is required to connect to AAD enabled cluster.
+        To learn more, please go to https://aka.ms/aks/kubelogin
+      provideClusterInfo: false
+- name: admin-spn-user
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - get-token
+      - --environment
+      - AzurePublicCloud
+      - --server-id
+      - 6dae42f8-4368-4678-94ff-3960e28e3630
+      - --client-id
+      - 11111111-2222-3333-4444-555555555555
+      - --client-secret
+      - secretvalue123
+      - --tenant-id
+      - 84cff436-d6b3-4e81-9ecd-cab809615c5c
+      - --login
+      - spn
+      command: kubelogin
+      env: null
+      installHint: |
+        kubelogin is not installed which is required to connect to AAD enabled cluster.
+        To learn more, please go to https://aka.ms/aks/kubelogin
+      provideClusterInfo: false
