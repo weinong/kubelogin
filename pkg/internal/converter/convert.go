@@ -43,29 +43,30 @@ const (
 	argRedirectURL                = "--redirect-url"
 	argLoginHint                  = "--login-hint"
 
-	flagAzureConfigDir             = "azure-config-dir"
+	flagCacheDir                   = "cache-dir"
+	flagTokenCacheDir              = "token-cache-dir"
 	flagClientID                   = "client-id"
-	flagContext                    = "context"
-	flagServerID                   = "server-id"
 	flagTenantID                   = "tenant-id"
-	flagEnvironment                = "environment"
+	flagAuthorityHost              = "authority-host"
+	flagFederatedTokenFile         = "federated-token-file"
+	flagLoginMethod                = "login"
 	flagClientSecret               = "client-secret"
 	flagClientCert                 = "client-certificate"
 	flagClientCertPassword         = "client-certificate-password"
-	flagIsLegacy                   = "legacy"
 	flagUsername                   = "username"
 	flagPassword                   = "password"
-	flagLoginMethod                = "login"
-	flagIdentityResourceID         = "identity-resource-id"
-	flagAuthorityHost              = "authority-host"
-	flagFederatedTokenFile         = "federated-token-file"
-	flagTokenCacheDir              = "token-cache-dir"
+	flagEnvironment                = "environment"
+	flagServerID                   = "server-id"
+	flagIsLegacy                   = "legacy"
 	flagAuthRecordCacheDir         = "cache-dir"
+	flagIdentityResourceID         = "identity-resource-id"
+	flagRedirectURL                = "redirect-url"
+	flagLoginHint                  = "login-hint"
+	flagContext                    = "context"
+	flagAzureConfigDir             = "azure-config-dir"
 	flagIsPoPTokenEnabled          = "pop-enabled"
 	flagPoPTokenClaims             = "pop-claims"
 	flagDisableEnvironmentOverride = "disable-environment-override"
-	flagRedirectURL                = "redirect-url"
-	flagLoginHint                  = "login-hint"
 
 	execName        = "kubelogin"
 	getTokenCommand = "get-token"
@@ -143,7 +144,7 @@ func getStringValueFromAuthInfo(authInfo *api.AuthInfo, mapping mapper.FlagMappi
 	} else {
 		result := getExecArg(authInfo, mapping.ArgumentName)
 		// Special handling for cache-dir: also check for deprecated --token-cache-dir
-		if result == "" && (mapping.FlagName == "cache-dir" || mapping.FlagName == "token-cache-dir") {
+		if result == "" && (mapping.FlagName == flagCacheDir || mapping.FlagName == flagTokenCacheDir) {
 			result = getExecArg(authInfo, "--token-cache-dir")
 		}
 		return result
@@ -175,7 +176,7 @@ func getBooleanValueFromAuthInfo(authInfo *api.AuthInfo, mapping mapper.FlagMapp
 // Helper functions to set values on token options
 func setStringField(options *token.Options, flagName, value string) {
 	// For cache-dir and token-cache-dir, don't overwrite existing non-empty values
-	if (flagName == "cache-dir" || flagName == "token-cache-dir") && options.AuthRecordCacheDir != "" && value == "" {
+	if (flagName == flagCacheDir || flagName == flagTokenCacheDir) && options.AuthRecordCacheDir != "" && value == "" {
 		return
 	}
 
@@ -204,9 +205,9 @@ func setStringField(options *token.Options, flagName, value string) {
 		options.AuthorityHost = value
 	case "federated-token-file":
 		options.FederatedTokenFile = value
-	case "cache-dir":
+	case flagCacheDir:
 		options.AuthRecordCacheDir = value
-	case "token-cache-dir": // Deprecated, but still supported
+	case flagTokenCacheDir: // Deprecated, but still supported
 		options.AuthRecordCacheDir = value
 	case "pop-claims":
 		options.PoPTokenClaims = value
@@ -383,28 +384,6 @@ func getExecBoolArg(authInfoPtr *api.AuthInfo, someArg string) bool {
 		}
 	}
 	return false
-}
-
-// If enabling PoP token support, users must provide both "--pop-enabled" and "--pop-claims" flags together.
-// If either is provided without the other, validation should throw an error, otherwise the get-token command
-// will fail under the hood.
-func validatePoPClaims(args []string, isPopTokenEnabled bool, popTokenClaimsFlag, popTokenClaimsVal string) ([]string, error) {
-	if isPopTokenEnabled && popTokenClaimsVal == "" {
-		// pop-enabled and pop-claims must be provided together
-		return args, fmt.Errorf("%s is required when specifying %s", argPoPTokenClaims, argIsPoPTokenEnabled)
-	}
-
-	if popTokenClaimsVal != "" && !isPopTokenEnabled {
-		// pop-enabled and pop-claims must be provided together
-		return args, fmt.Errorf("%s is required when specifying %s", argIsPoPTokenEnabled, argPoPTokenClaims)
-	}
-
-	if isPopTokenEnabled && popTokenClaimsVal != "" {
-		args = append(args, argIsPoPTokenEnabled)
-		args = append(args, popTokenClaimsFlag, popTokenClaimsVal)
-	}
-
-	return args, nil
 }
 
 func isLegacyAzureAuth(authInfoPtr *api.AuthInfo) (ok bool) {

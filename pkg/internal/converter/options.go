@@ -1,12 +1,12 @@
 package converter
 
 import (
-"fmt"
+	"fmt"
 
-"github.com/Azure/kubelogin/pkg/internal/token"
-"github.com/spf13/cobra"
-"github.com/spf13/pflag"
-"k8s.io/cli-runtime/pkg/genericclioptions"
+	"github.com/Azure/kubelogin/pkg/internal/token"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
 
 // stringptr returns a pointer to the provided string
@@ -143,14 +143,6 @@ func (c *CompletedOptions) GetFlags() *pflag.FlagSet {
 	return c.validated.flags
 }
 
-// setFlag sets a flag value by name - helper for testing
-func (o *RawOptions) setFlag(name, value string) error {
-	if o.flags == nil {
-		return fmt.Errorf("flags not initialized")
-	}
-	return o.flags.Set(name, value)
-}
-
 // SetContext sets the context for raw options
 func (o *RawOptions) SetContext(context string) {
 	o.context = context
@@ -159,6 +151,16 @@ func (o *RawOptions) SetContext(context string) {
 // SetAzureConfigDir sets the Azure config directory for raw options
 func (o *RawOptions) SetAzureConfigDir(dir string) {
 	o.azureConfigDir = dir
+}
+
+// setFlag sets a flag value by name - helper for testing
+//
+//nolint:unused // setFlag is used by tests
+func (o *RawOptions) setFlag(name, value string) error {
+	if o.flags == nil {
+		return fmt.Errorf("flags not initialized")
+	}
+	return o.flags.Set(name, value)
 }
 
 // IsSet checks if a flag was explicitly set
