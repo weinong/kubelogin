@@ -95,14 +95,12 @@ func (r *RequiredFieldRule) GetDescription() string {
 // MutuallyExclusiveRule validates that only one of a set of fields is set
 type MutuallyExclusiveRule struct {
 	FieldNames []string
-	GroupName  string
 }
 
 // NewMutuallyExclusiveRule creates a new mutually exclusive rule
-func NewMutuallyExclusiveRule(groupName string, fieldNames ...string) *MutuallyExclusiveRule {
+func NewMutuallyExclusiveRule(fieldNames ...string) *MutuallyExclusiveRule {
 	return &MutuallyExclusiveRule{
 		FieldNames: fieldNames,
-		GroupName:  groupName,
 	}
 }
 
@@ -244,13 +242,13 @@ func (r *SchemaRegistry) registerDefaultSchemas() {
 		AddRule(NewRequiredFieldRule("server-id", "Server ID")).
 		AddRule(NewRequiredFieldRule("client-id", "Client ID")).
 		AddRule(NewRequiredFieldRule("tenant-id", "Tenant ID")).
-		AddRule(NewMutuallyExclusiveRule("authentication", "client-secret", "client-certificate")).
+		AddRule(NewMutuallyExclusiveRule("client-secret", "client-certificate")).
 		AddRule(NewConditionalRequiredRule("pop-enabled", "pop-claims", "--pop-claims is required when specifying --pop-enabled"))
 
 	// MSI Login Schema
 	msi := NewLoginMethodSchema("msi").
 		AddRule(NewRequiredFieldRule("server-id", "Server ID")).
-		AddRule(NewMutuallyExclusiveRule("identity", "client-id", "identity-resource-id"))
+		AddRule(NewMutuallyExclusiveRule("client-id", "identity-resource-id"))
 
 	// Azure CLI Login Schema
 	azurecli := NewLoginMethodSchema("azurecli").
