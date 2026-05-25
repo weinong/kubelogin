@@ -1,0 +1,22 @@
+{
+  "universe_usage_history": [
+    {
+      "universe": "The Matrix",
+      "assigned_at": "2026-05-25T22:31:57+00:00",
+      "assignment_id": "a-20260525-223157-matrix"
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "a-20260525-223157-matrix": {
+      "assigned_at": "2026-05-25T22:31:57+00:00",
+      "universe": "The Matrix",
+      "team_size": 3,
+      "shape": "architect+coder+reviewer",
+      "cast": {
+        "morpheus": "Architect",
+        "neo": "Coder",
+        "trinity": "Reviewer"
+      }
+    }
+  }
+}
